@@ -27,8 +27,8 @@ jobs:
         with:
           url: https://example.com
 
-  lighthouse:
-    name: Lighthouse
+  post-deploy-checks:
+    name: Post-deploy checks
     needs: wait-for-deploy
     if: always() && (github.event_name != 'push' || needs.wait-for-deploy.outputs.deployed == 'true')
     runs-on: ubuntu-latest
