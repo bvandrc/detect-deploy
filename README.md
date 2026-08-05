@@ -37,8 +37,8 @@ jobs:
 ```
 
 If a push isn't followed by a deploy, you may want the run to leave no trace in
-Actions history instead of showing up as a skip. Set `marker-name` and have a
-separate cleanup workflow delete any run that has the marker artifact:
+Actions history instead of showing up as a skip. Set `marker-name` to have the
+action upload a marker artifact when no deploy is detected:
 
 ```yaml
   wait-for-deploy:
@@ -58,6 +58,9 @@ separate cleanup workflow delete any run that has the marker artifact:
           url: https://example.com
           marker-name: no-deploy-marker
 ```
+
+See [`examples/cleanup-no-deploy-runs.yml`](examples/cleanup-no-deploy-runs.yml)
+for a cleanup workflow that deletes any run carrying that marker artifact.
 
 ## Inputs
 
