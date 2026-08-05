@@ -63,7 +63,7 @@ runs:
           fi
           sleep "${{ inputs.interval-seconds }}"
         done
-        echo "No new deploy detected after $(( ${{ inputs.max-attempts }} * ${{ inputs.interval-seconds }} / 60 )) minutes."
+        echo "No new deploy detected after $(( ${{ inputs.max-attempts }} * ${{ inputs.interval-seconds }} )) seconds."
         echo "deployed=false" >> "$GITHUB_OUTPUT"
 
     - name: Create no-deploy marker
