@@ -4,9 +4,8 @@ A composite GitHub Action that polls a URL until its content changes from a
 pre-recorded baseline, to detect when a new deploy has gone live.
 
 This is useful when your host's deploys are decoupled from the git push that
-triggers CI (e.g. Replit, where deploys are manual), so a workflow can't
-assume a new build is live the moment CI starts. It polls instead of
-guessing a fixed sleep duration.
+triggers CI, so a workflow can't assume a new build is live the moment CI
+starts. It polls instead of guessing a fixed sleep duration.
 
 ## Usage
 
