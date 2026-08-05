@@ -1,0 +1,60 @@
+name: Poll for Deploy
+description: Polls a URL until its content changes, to detect when a deploy has actually gone live.
+author: bvandrc
+
+branding:
+  icon: refresh-cw
+  color: blue
+
+inputs:
+  url:
+    description: The URL to poll.
+    required: true
+  max-attempts:
+    description: Maximum number of polling attempts before giving up.
+    required: false
+    default: "45"
+  interval-seconds:
+    description: Seconds to wait between polling attempts.
+    required: false
+    default: "20"
+
+outputs:
+  deployed:
+    description: >
+      "true" if a new deploy was detected before max-attempts was reached,
+      "false" otherwise.
+    value: ${{ steps.wait.outputs.deployed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Capture pre-deploy page hash
+      id: baseline
+      shell: bash
+      run: |
+        HASH=$(curl -fsS "${{ inputs.url }}" | sha256sum | awk '{print $1}')
+        if [ -z "$HASH" ]; then
+          echo "::error::Failed to compute a checksum for ${{ inputs.url }}; cannot establish a baseline." >&2
+          exit 1
+        fi
+        echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+    # Vite (and most modern bundlers) content-hash every asset filename, so
+    # the served index.html changes on every build -- poll until it differs
+    # from the baseline instead of guessing a fixed delay.
+    - name: Wait for new deploy
+      id: wait
+      shell: bash
+      run: |
+        BASELINE="${{ steps.baseline.outputs.hash }}"
+        for i in $(seq 1 "${{ inputs.max-attempts }}"); do
+          CURRENT=$(curl -fsS "${{ inputs.url }}" | sha256sum | awk '{print $1}') || true
+          if [ -n "$CURRENT" ] && [ "$CURRENT" != "$BASELINE" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sleep "${{ inputs.interval-seconds }}"
+        done
+        echo "No new deploy detected after $(( ${{ inputs.max-attempts }} * ${{ inputs.interval-seconds }} )) seconds."
+        echo "deployed=false" >> "$GITHUB_OUTPUT"
