@@ -1,12 +1,12 @@
 name: Cleanup no-deploy runs
 
-# Deletes runs of "Production Lighthouse" (or whatever workflow you point
-# workflow_run at) that uploaded a no-deploy-marker artifact, so a push that
+# Deletes runs of the given workflow (set to whichever workflow calls
+# poll-for-deploy) that uploaded a no-deploy-marker artifact, so a push that
 # never resulted in a deploy leaves no trace in Actions history.
 
 on:
   workflow_run:
-    workflows: [Production Lighthouse]
+    workflows: [Your Workflow Name]
     types: [completed]
 
 permissions:
