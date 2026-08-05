@@ -37,8 +37,8 @@ jobs:
 ```
 
 If a push isn't followed by a deploy, you may want the run to leave no trace in
-Actions history instead of showing up as a skip. Set `upload-marker: true` and
-have a separate cleanup workflow delete any run that has the marker artifact:
+Actions history instead of showing up as a skip. Set `marker-name` and have a
+separate cleanup workflow delete any run that has the marker artifact:
 
 ```yaml
   wait-for-deploy:
@@ -56,18 +56,17 @@ have a separate cleanup workflow delete any run that has the marker artifact:
         uses: bvandrc/poll-for-deploy@v1
         with:
           url: https://example.com
-          upload-marker: "true"
+          marker-name: no-deploy-marker
 ```
 
 ## Inputs
 
-| Name               | Description                                                            | Required | Default            |
-| ------------------ | ------------------------------------------------------------------------ | -------- | ------------------ |
-| `url`               | The URL to poll.                                                          | Yes      |                     |
-| `max-attempts`      | Maximum number of polling attempts before giving up.                     | No       | `45`                |
-| `interval-seconds`  | Seconds to wait between polling attempts.                                | No       | `20`                |
-| `upload-marker`     | If `"true"`, upload a marker artifact when no new deploy is detected.    | No       | `"false"`           |
-| `marker-name`       | Artifact name to use when `upload-marker` is `"true"`.                   | No       | `"no-deploy-marker"`|
+| Name               | Description                                                              | Required | Default |
+| ------------------ | --------------------------------------------------------------------------- | -------- | ------- |
+| `url`               | The URL to poll.                                                             | Yes      |         |
+| `max-attempts`      | Maximum number of polling attempts before giving up.                        | No       | `45`    |
+| `interval-seconds`  | Seconds to wait between polling attempts.                                   | No       | `20`    |
+| `marker-name`       | If set, upload a marker artifact under this name when no new deploy is detected. Leave unset to skip the upload. | No | (none) |
 
 ## Outputs
 
