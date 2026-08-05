@@ -34,6 +34,10 @@ runs:
       shell: bash
       run: |
         HASH=$(curl -fsS "${{ inputs.url }}" | sha256sum | awk '{print $1}')
+        if [ -z "$HASH" ]; then
+          echo "::error::Failed to compute a checksum for ${{ inputs.url }}; cannot establish a baseline." >&2
+          exit 1
+        fi
         echo "hash=$HASH" >> "$GITHUB_OUTPUT"
 
     # Vite (and most modern bundlers) content-hash every asset filename, so
