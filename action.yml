@@ -18,6 +18,16 @@ inputs:
     description: Seconds to wait between polling attempts.
     required: false
     default: "20"
+  upload-marker:
+    description: >
+      If "true", upload a marker artifact when no new deploy is detected, so
+      a separate cleanup workflow can delete the run and leave no trace.
+    required: false
+    default: "false"
+  marker-name:
+    description: Artifact name to use when upload-marker is "true".
+    required: false
+    default: "no-deploy-marker"
 
 outputs:
   deployed:
@@ -58,3 +68,16 @@ runs:
         done
         echo "No new deploy detected after $(( ${{ inputs.max-attempts }} * ${{ inputs.interval-seconds }} / 60 )) minutes."
         echo "deployed=false" >> "$GITHUB_OUTPUT"
+
+    - name: Create no-deploy marker
+      if: inputs.upload-marker == 'true' && steps.wait.outputs.deployed != 'true'
+      shell: bash
+      run: mkdir -p "${{ inputs.marker-name }}" && touch "${{ inputs.marker-name }}/no-deploy"
+
+    - name: Upload no-deploy marker
+      if: inputs.upload-marker == 'true' && steps.wait.outputs.deployed != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.marker-name }}
+        path: ${{ inputs.marker-name }}
+        retention-days: 1
