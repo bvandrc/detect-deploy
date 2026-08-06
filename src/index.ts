@@ -12,17 +12,26 @@
  * time out on a deploy that had in fact gone live.
  */
 
-import * as cache from '@actions/cache';
-import * as core from '@actions/core';
-import * as crypto from 'node:crypto';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { isFeatureAvailable, restoreCache, saveCache } from '@actions/cache';
+import {
+  debug,
+  getBooleanInput,
+  getInput,
+  info,
+  notice,
+  setFailed,
+  setOutput,
+  warning,
+} from '@actions/core';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const getIntegerInput = (name: string): number => {
-  const raw = core.getInput(name);
+  const raw = getInput(name);
   if (!/^\d+$/.test(raw)) {
     throw new Error(`${name} must be a non-negative integer, got '${raw}'.`);
   }
@@ -37,14 +46,14 @@ const sleep = (seconds: number): Promise<void> =>
 // escape as an uncaught exception, and node would print the offending source
 // line -- which, in a minified bundle, is the entire file.
 const main = async (): Promise<void> => {
-  const targetUrl = core.getInput('url', { required: true });
+  const targetUrl = getInput('url', { required: true });
   const maxAttempts = getIntegerInput('max-attempts');
   const interval = getIntegerInput('interval-seconds');
-  const assumeDeployedOnFirstRun = core.getBooleanInput('assume-deployed-on-first-run');
+  const assumeDeployedOnFirstRun = getBooleanInput('assume-deployed-on-first-run');
 
   // A directory, because the cache API caches paths rather than values.
-  const stateDir = path.join(process.env['RUNNER_TEMP'] ?? os.tmpdir(), 'poll-for-deploy');
-  const stateFile = path.join(stateDir, 'hash');
+  const stateDir = join(process.env['RUNNER_TEMP'] ?? tmpdir(), 'poll-for-deploy');
+  const stateFile = join(stateDir, 'hash');
 
   // Cache entries are immutable, so every run writes a new key and reads back
   // the most recent one matching the prefix. The url is digested to bound the
@@ -52,7 +61,7 @@ const main = async (): Promise<void> => {
   // part of the key so two jobs polling the same url in one run don't collide
   // on it; it is not part of the prefix, so they still read each other's
   // hashes.
-  const urlId = crypto.createHash('sha256').update(targetUrl).digest('hex').slice(0, 32);
+  const urlId = createHash('sha256').update(targetUrl).digest('hex').slice(0, 32);
   const cachePrefix = `poll-for-deploy-v1-${urlId}-`;
   const cacheKey =
     cachePrefix +
@@ -73,32 +82,32 @@ const main = async (): Promise<void> => {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = Buffer.from(await res.arrayBuffer());
-    return crypto.createHash('sha256').update(body).digest('hex');
+    return createHash('sha256').update(body).digest('hex');
   };
 
   // A cache miss is normal and a cache failure is survivable -- the run just
   // falls back to a live baseline -- so neither is allowed to fail the step.
   const restoreBaseline = async (): Promise<string | null> => {
-    if (cache.isFeatureAvailable()) {
+    if (isFeatureAvailable()) {
       try {
-        const matched = await cache.restoreCache([stateDir], cacheKey, [cachePrefix]);
-        if (matched) core.debug(`Restored ${matched}`);
+        const matched = await restoreCache([stateDir], cacheKey, [cachePrefix]);
+        if (matched) debug(`Restored ${matched}`);
       } catch (err) {
-        core.warning(`Could not read the recorded hash: ${message(err)}`);
+        warning(`Could not read the recorded hash: ${message(err)}`);
       }
     } else {
-      core.debug('Actions cache is unavailable; the baseline cannot carry across runs.');
+      debug('Actions cache is unavailable; the baseline cannot carry across runs.');
     }
 
     // Read whatever is on disk rather than trusting the restore result: the
     // file is the state, the cache is only how it usually gets here. A second
     // invocation in the same job finds it even if the save lost a key race.
-    if (!fs.existsSync(stateFile)) return null;
-    const cached = fs.readFileSync(stateFile, 'utf8').trim();
+    if (!existsSync(stateFile)) return null;
+    const cached = readFileSync(stateFile, 'utf8').trim();
     // Ignore anything that isn't a sha256 digest, rather than baselining
     // against a truncated or corrupted cache entry.
     if (!/^[0-9a-f]{64}$/.test(cached)) {
-      core.warning(`Discarding malformed cached hash for ${targetUrl}.`);
+      warning(`Discarding malformed cached hash for ${targetUrl}.`);
       return null;
     }
     return cached;
@@ -108,12 +117,12 @@ const main = async (): Promise<void> => {
   // re-records its hash, which keeps the entry clear of the eviction window.
   let hashToRecord: string | null = null;
   const record = (hash: string): void => {
-    fs.writeFileSync(stateFile, `${hash}\n`);
+    writeFileSync(stateFile, `${hash}\n`);
     hashToRecord = hash;
   };
 
   try {
-    fs.mkdirSync(stateDir, { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
 
     let baseline = await restoreBaseline();
     const source = baseline ? 'cache' : 'live';
@@ -122,7 +131,7 @@ const main = async (): Promise<void> => {
     // evicted); there is nothing else to compare against yet, so the honest
     // answer is "unknown" and the flag decides which way to resolve it.
     if (!baseline) {
-      core.notice(
+      notice(
         assumeDeployedOnFirstRun
           ? `No hash recorded for ${targetUrl} yet; recording what it serves now and reporting deployed=true without polling.`
           : `No hash recorded for ${targetUrl} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
@@ -139,46 +148,46 @@ const main = async (): Promise<void> => {
       // way, and without one it would land here again.
       if (assumeDeployedOnFirstRun) {
         record(baseline);
-        core.setOutput('deployed', 'true');
+        setOutput('deployed', 'true');
         return;
       }
     }
 
-    core.info(`Baseline (${source}): ${baseline}`);
+    info(`Baseline (${source}): ${baseline}`);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       let current: string | null = null;
       try {
         current = await fetchHash();
       } catch (err) {
-        core.info(`Attempt ${attempt}/${maxAttempts}: request failed (${message(err)}).`);
+        info(`Attempt ${attempt}/${maxAttempts}: request failed (${message(err)}).`);
       }
 
       if (current && current !== baseline) {
-        core.info(`Attempt ${attempt}/${maxAttempts}: new deploy detected (${current}).`);
+        info(`Attempt ${attempt}/${maxAttempts}: new deploy detected (${current}).`);
         record(current);
-        core.setOutput('deployed', 'true');
+        setOutput('deployed', 'true');
         return;
       }
-      if (current) core.info(`Attempt ${attempt}/${maxAttempts}: unchanged.`);
+      if (current) info(`Attempt ${attempt}/${maxAttempts}: unchanged.`);
       if (attempt < maxAttempts) await sleep(interval);
     }
 
-    core.info(`No new deploy detected after ${maxAttempts * interval} seconds.`);
+    info(`No new deploy detected after ${maxAttempts * interval} seconds.`);
     record(baseline);
-    core.setOutput('deployed', 'false');
+    setOutput('deployed', 'false');
   } finally {
-    if (hashToRecord && cache.isFeatureAvailable()) {
+    if (hashToRecord && isFeatureAvailable()) {
       try {
-        await cache.saveCache([stateDir], cacheKey);
+        await saveCache([stateDir], cacheKey);
       } catch (err) {
         // Includes the benign case of two invocations in one job racing on the
         // key, which the cache service rejects rather than overwriting.
-        core.warning(`Could not record the hash for the next run: ${message(err)}`);
+        warning(`Could not record the hash for the next run: ${message(err)}`);
       }
     }
   }
 };
 
 // Not top-level await: the bundle is CommonJS, which has no such thing.
-main().catch((err: unknown) => core.setFailed(message(err)));
+main().catch((err: unknown) => setFailed(message(err)));
