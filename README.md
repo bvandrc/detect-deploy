@@ -40,6 +40,41 @@ jobs:
       - run: echo "run your post-deploy checks here"
 ```
 
+## Keeping the baseline warm
+
+The recorded hash lives in the Actions cache, and GitHub evicts entries that
+have gone 7 days without a read. If more than a week can pass between deploys,
+the entry is gone by the next one and that run starts over with no baseline.
+
+If that's possible for you, schedule a run that does nothing but read the hash
+and record it again:
+
+```yaml
+name: Keep deploy baseline warm
+on:
+  schedule:
+    - cron: "0 4 * * 1,4" # twice weekly: a 7-day cron races the 7-day eviction
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: bvandrc/poll-for-deploy@v1
+        with:
+          url: https://example.com
+          max-attempts: "1"
+```
+
+One request, no waiting, and its `deployed` output is meant to be ignored. Run
+it on your default branch — those caches are readable from every branch, so a
+single job keeps every branch's lookups alive.
+
+Two things to know: if the page did change since the last run, this records the
+new hash, so the next real deploy compares against it rather than reporting a
+change twice. And GitHub disables scheduled workflows in a repository with no
+activity for 60 days — past that the cron stops and the entry ages out anyway.
+
 ## Inputs
 
 | Name               | Description                                                                                                                                            | Required | Default |
@@ -65,9 +100,9 @@ log prints the baseline and every observed hash if you need to debug a poll.
   which can miss a deploy that already went live; set
   `assume-deployed-on-first-run` to report `true` at once instead, so dependent
   steps run rather than being skipped — against a page that may still be the
-  old build. Either way the hash is recorded, so later runs are exact. This
-  also applies after an entry is evicted, which happens after 7 days without a
-  read.
+  old build. Either way the hash is recorded, so later runs are exact. This also
+  applies after an entry is evicted; see [keeping the baseline
+  warm](#keeping-the-baseline-warm).
 - **One baseline per URL, per branch.** Actions caches are scoped to a branch,
   with the default branch's readable from all of them, so a pull request branch
   reads `main`'s hash but writes its own.
