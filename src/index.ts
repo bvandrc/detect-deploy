@@ -131,10 +131,11 @@ const main = async (): Promise<void> => {
     // evicted); there is nothing else to compare against yet, so the honest
     // answer is "unknown" and the flag decides which way to resolve it.
     if (!baseline) {
+      const noHashYet = `No hash recorded for ${targetUrl} yet.`;
       notice(
         assumeDeployedOnFirstRun
-          ? `No hash recorded for ${targetUrl} yet; recording what it serves now and reporting deployed=true without polling.`
-          : `No hash recorded for ${targetUrl} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
+          ? `${noHashYet} Recording what it serves now and reporting deployed=true without polling.`
+          : `${noHashYet} This run is baselining against the page as it looks now, so a deploy that already went live may not be detected.`,
       );
       try {
         baseline = await fetchHash();
@@ -156,20 +157,21 @@ const main = async (): Promise<void> => {
     info(`Baseline (${source}): ${baseline}`);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const label = `Attempt ${attempt}/${maxAttempts}`;
       let current: string | null = null;
       try {
         current = await fetchHash();
       } catch (err) {
-        info(`Attempt ${attempt}/${maxAttempts}: request failed (${message(err)}).`);
+        info(`${label}: request failed (${message(err)}).`);
       }
 
       if (current && current !== baseline) {
-        info(`Attempt ${attempt}/${maxAttempts}: new deploy detected (${current}).`);
+        info(`${label}: new deploy detected (${current}).`);
         record(current);
         setOutput('deployed', 'true');
         return;
       }
-      if (current) info(`Attempt ${attempt}/${maxAttempts}: unchanged.`);
+      if (current) info(`${label}: unchanged.`);
       if (attempt < maxAttempts) await sleep(interval);
     }
 
