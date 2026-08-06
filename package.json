@@ -7,7 +7,7 @@
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --minify",
     "typecheck": "tsc --noEmit",
     "all": "npm run typecheck && npm run build && npm test",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mts"
   },
   "dependencies": {
     "@actions/cache": "^6.2.0",

@@ -131,6 +131,10 @@ cache isn't reachable outside a workflow, so the action skips it and reads the
 recorded hash straight off disk; seeding that file is how the tests cover the
 cache-hit paths.
 
+They're written in TypeScript and run through Node's own type stripping, so
+running them needs Node 22.6 or newer. There is no test framework or transpile
+step — `node --test` and `node:assert`.
+
 Pushing without rebuilding is safe on a branch — CI rebuilds and commits the
 bundle if it differs from what you pushed. On a pull request it can't commit,
 so it fails instead.
