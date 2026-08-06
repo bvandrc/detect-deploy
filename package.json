@@ -6,14 +6,16 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --minify",
     "ts:check": "tsc --noEmit",
-    "all": "npm run ts:check && npm run build && npm test",
-    "test": "node --experimental-strip-types --test test/*.test.mts"
+    "all": "npm run format && npm run ts:check && npm run build && npm test",
+    "test": "node --experimental-strip-types --test test/*.test.mts",
+    "format": "biome check . --fix"
   },
   "dependencies": {
     "@actions/cache": "^6.2.0",
     "@actions/core": "^1.11.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2"
