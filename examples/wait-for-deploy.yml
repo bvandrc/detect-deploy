@@ -1,18 +1,9 @@
 name: Wait for deploy
 
-# Polls for a deploy after a push, and if one lands, dispatches the
-# post-deploy-checks workflow. This run is deleted afterwards regardless of
-# outcome -- see cleanup-wait-for-deploy.yml -- so it never has to decide
-# whether to keep or discard itself.
-
 on:
   push:
     branches:
       - main
-
-permissions:
-  contents: read
-  actions: write
 
 jobs:
   wait-for-deploy:
@@ -30,14 +21,10 @@ jobs:
         with:
           url: https://example.com
 
-      - name: Trigger post-deploy checks
-        if: steps.poll.outputs.deployed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'post-deploy-checks.yml',
-              ref: context.ref,
-            });
+  post-deploy-checks:
+    name: Post-deploy checks
+    needs: wait-for-deploy
+    if: always() && needs.wait-for-deploy.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "run your post-deploy checks here"

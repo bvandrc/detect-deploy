@@ -36,12 +36,8 @@ jobs:
       - run: echo "run your post-deploy checks here"
 ```
 
-If you'd rather not have the polling job show up in your Actions history at
-all, dispatch a downstream workflow only when a deploy is detected, then
-delete the polling run afterwards from a separate cleanup workflow (a run
-can't delete itself while it's still in progress). See
-[`examples/wait-for-deploy.yml`](examples/wait-for-deploy.yml) and
-[`examples/cleanup-wait-for-deploy.yml`](examples/cleanup-wait-for-deploy.yml).
+See [`examples/wait-for-deploy.yml`](examples/wait-for-deploy.yml) for a
+full example.
 
 ## Inputs
 
