@@ -36,9 +36,6 @@ jobs:
       - run: echo "run your post-deploy checks here"
 ```
 
-See [`examples/wait-for-deploy.yml`](examples/wait-for-deploy.yml) for a
-full example.
-
 ## Inputs
 
 | Name               | Description                                       | Required | Default |
