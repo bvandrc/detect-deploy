@@ -18,43 +18,168 @@ inputs:
     description: Seconds to wait between polling attempts.
     required: false
     default: "20"
+  use-cache:
+    description: >
+      Whether to use the hash recorded by the previous run as the baseline,
+      instead of fetching a fresh one when the action starts. Set to "false"
+      to always fetch a live baseline.
+    required: false
+    default: "true"
+  cache-key:
+    description: >
+      Identifier the recorded hash is stored under. Defaults to the `url`.
+      Set this explicitly if a single workflow polls the same URL more than
+      once, or if two jobs should deliberately share a baseline.
+    required: false
+    default: ""
 
 outputs:
   deployed:
     description: >
       "true" if a new deploy was detected before max-attempts was reached,
       "false" otherwise.
-    value: ${{ steps.wait.outputs.deployed }}
+    value: ${{ steps.poll.outputs.deployed }}
+  hash:
+    description: The last hash observed at the URL, and the one recorded for the next run.
+    value: ${{ steps.poll.outputs.hash }}
+  baseline:
+    description: The hash the poll compared against.
+    value: ${{ steps.poll.outputs.baseline }}
+  baseline-source:
+    description: >
+      "cache" if the baseline came from a previous run's recorded hash,
+      "live" if it was fetched when this run started.
+    value: ${{ steps.poll.outputs.baseline-source }}
 
 runs:
   using: composite
   steps:
-    - name: Capture pre-deploy page hash
-      id: baseline
+    # Cache keys are immutable, so every run writes a new key and reads back
+    # the most recent one matching the prefix. The url is digested rather than
+    # used directly because cache keys treat commas as separators.
+    - name: Derive cache key
+      id: key
       shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        CACHE_KEY: ${{ inputs.cache-key }}
       run: |
-        HASH=$(curl -fsS "${{ inputs.url }}" | sha256sum | awk '{print $1}')
-        if [ -z "$HASH" ]; then
-          echo "::error::Failed to compute a checksum for ${{ inputs.url }}; cannot establish a baseline." >&2
-          exit 1
-        fi
-        echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+        set -euo pipefail
+        ID=$(printf '%s' "${CACHE_KEY:-$URL}" | sha256sum | cut -c1-32)
+        echo "prefix=poll-for-deploy-v1-$ID-" >> "$GITHUB_OUTPUT"
+        echo "key=poll-for-deploy-v1-$ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
-    # Vite (and most modern bundlers) content-hash every asset filename, so
-    # the served index.html changes on every build -- poll until it differs
-    # from the baseline instead of guessing a fixed delay.
+    - name: Restore recorded hash
+      if: inputs.use-cache == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/poll-for-deploy
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    # Vite (and most modern bundlers) content-hash every asset filename, so the
+    # served index.html changes on every build -- poll until it differs from the
+    # baseline instead of guessing a fixed delay.
+    #
+    # The baseline is whatever this URL last served as of the previous run. A
+    # baseline captured now would be wrong whenever the deploy beat the runner
+    # to it: the "before" picture would already be the new page, and the poll
+    # would time out on a deploy that had in fact gone live.
     - name: Wait for new deploy
-      id: wait
+      id: poll
       shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        INTERVAL: ${{ inputs.interval-seconds }}
+        USE_CACHE: ${{ inputs.use-cache }}
+        STATE_DIR: ${{ runner.temp }}/poll-for-deploy
       run: |
-        BASELINE="${{ steps.baseline.outputs.hash }}"
-        for i in $(seq 1 "${{ inputs.max-attempts }}"); do
-          CURRENT=$(curl -fsS "${{ inputs.url }}" | sha256sum | awk '{print $1}') || true
-          if [ -n "$CURRENT" ] && [ "$CURRENT" != "$BASELINE" ]; then
+        set -uo pipefail
+
+        for pair in "MAX_ATTEMPTS:$MAX_ATTEMPTS" "INTERVAL:$INTERVAL"; do
+          case "${pair#*:}" in
+            '' | *[!0-9]*)
+              echo "::error::${pair%%:*} must be a non-negative integer, got '${pair#*:}'." >&2
+              exit 1
+              ;;
+          esac
+        done
+
+        STATE_FILE="$STATE_DIR/hash"
+        mkdir -p "$STATE_DIR"
+        # Deliberately outside STATE_DIR: only the hash belongs in the cache.
+        BODY="$STATE_DIR.body"
+
+        # Baseline and poll hashes must be computed identically, or every run
+        # would report a change on its first attempt.
+        fetch_hash() {
+          curl -fsS --max-time 30 -o "$BODY" "$URL" || return 1
+          sha256sum "$BODY" | awk '{print $1}'
+        }
+
+        BASELINE=""
+        SOURCE="live"
+        if [ "$USE_CACHE" = "true" ] && [ -f "$STATE_FILE" ]; then
+          CACHED=$(tr -d '[:space:]' < "$STATE_FILE")
+          # Ignore anything that isn't a sha256 digest, rather than baselining
+          # against a truncated or corrupted cache entry.
+          if printf '%s' "$CACHED" | grep -Eq '^[0-9a-f]{64}$'; then
+            BASELINE="$CACHED"
+            SOURCE="cache"
+          else
+            echo "::warning::Discarding malformed cached hash for $URL."
+          fi
+        fi
+
+        if [ -z "$BASELINE" ]; then
+          if [ "$USE_CACHE" = "true" ]; then
+            echo "::notice::No hash recorded for $URL yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it."
+          fi
+          BASELINE=$(fetch_hash)
+          if [ -z "$BASELINE" ]; then
+            echo "::error::Failed to compute a checksum for $URL; cannot establish a baseline." >&2
+            exit 1
+          fi
+        fi
+
+        echo "Baseline ($SOURCE): $BASELINE"
+        echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
+        echo "baseline-source=$SOURCE" >> "$GITHUB_OUTPUT"
+
+        record() {
+          printf '%s\n' "$1" > "$STATE_FILE"
+          echo "hash=$1" >> "$GITHUB_OUTPUT"
+        }
+
+        ATTEMPT=0
+        while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+          CURRENT=$(fetch_hash)
+          if [ -z "$CURRENT" ]; then
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: request failed."
+          elif [ "$CURRENT" != "$BASELINE" ]; then
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: new deploy detected ($CURRENT)."
+            record "$CURRENT"
             echo "deployed=true" >> "$GITHUB_OUTPUT"
             exit 0
+          else
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: unchanged."
           fi
-          sleep "${{ inputs.interval-seconds }}"
+          if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+            sleep "$INTERVAL"
+          fi
         done
-        echo "No new deploy detected after $(( ${{ inputs.max-attempts }} * ${{ inputs.interval-seconds }} )) seconds."
+
+        echo "No new deploy detected after $((MAX_ATTEMPTS * INTERVAL)) seconds."
+        record "$BASELINE"
         echo "deployed=false" >> "$GITHUB_OUTPUT"
+
+    # Runs even when the poll timed out, so the recorded hash stays fresh
+    # against the cache's eviction window.
+    - name: Record hash for the next run
+      if: always() && inputs.use-cache == 'true' && steps.poll.outputs.hash != ''
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/poll-for-deploy
+        key: ${{ steps.key.outputs.key }}
