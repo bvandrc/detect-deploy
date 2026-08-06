@@ -24,11 +24,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
-const url = process.env.POLL_URL;
-const stateDir = process.env.STATE_DIR;
-const stateFile = `${stateDir}/hash`;
-
-const integer = (name) => {
+const getEnvInteger = (name) => {
   const raw = process.env[name] ?? '';
   if (!/^\d+$/.test(raw)) {
     console.log(`::error::${name} must be a non-negative integer, got '${raw}'.`);
@@ -37,11 +33,16 @@ const integer = (name) => {
   return Number(raw);
 };
 
-const maxAttempts = integer('MAX_ATTEMPTS');
-const interval = integer('INTERVAL');
+const URL = process.env.POLL_URL;
+const STATE_DIR = process.env.STATE_DIR;
+const STATE_FILE = `${STATE_DIR}/hash`;
+const GITHUB_OUTPUT = process.env.GITHUB_OUTPUT;
+const MAX_ATTEMPTS = getEnvInteger('MAX_ATTEMPTS');
+const INTERVAL = getEnvInteger('INTERVAL');
 
 const setOutput = (key, value) =>
-  fs.appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+  fs.appendFileSync(GITHUB_OUTPUT, `${key}=${value}\n`);
+
 const sleep = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 
 // Used for both the baseline and every poll, so the two can never be hashed
@@ -49,7 +50,7 @@ const sleep = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 // Redirects are followed: the curl this replaced did not, so a url that 301s
 // hashed an empty body that never changed.
 const fetchHash = async () => {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30_000) });
+  const res = await fetch(URL, { redirect: 'follow', signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = Buffer.from(await res.arrayBuffer());
   return crypto.createHash('sha256').update(body).digest('hex');
@@ -58,24 +59,24 @@ const fetchHash = async () => {
 // The hash output is internal: it tells the save step there is a hash worth
 // persisting. Only `deployed` is exposed by the action.
 const record = (hash) => {
-  fs.writeFileSync(stateFile, `${hash}\n`);
+  fs.writeFileSync(STATE_FILE, `${hash}\n`);
   setOutput('hash', hash);
 };
 
 const main = async () => {
-  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(STATE_DIR, { recursive: true });
 
   let baseline = null;
   let source = 'live';
-  if (fs.existsSync(stateFile)) {
-    const cached = fs.readFileSync(stateFile, 'utf8').trim();
+  if (fs.existsSync(STATE_FILE)) {
+    const cached = fs.readFileSync(STATE_FILE, 'utf8').trim();
     // Ignore anything that isn't a sha256 digest, rather than baselining
     // against a truncated or corrupted cache entry.
     if (/^[0-9a-f]{64}$/.test(cached)) {
       baseline = cached;
       source = 'cache';
     } else {
-      console.log(`::warning::Discarding malformed cached hash for ${url}.`);
+      console.log(`::warning::Discarding malformed cached hash for ${URL}.`);
     }
   }
 
@@ -83,13 +84,13 @@ const main = async () => {
   // evicted); there is nothing else to compare against yet.
   if (!baseline) {
     console.log(
-      `::notice::No hash recorded for ${url} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
+      `::notice::No hash recorded for ${URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
     );
     try {
       baseline = await fetchHash();
     } catch (err) {
       console.log(
-        `::error::Failed to compute a checksum for ${url}; cannot establish a baseline. (${err.message})`,
+        `::error::Failed to compute a checksum for ${URL}; cannot establish a baseline. (${err.message})`,
       );
       process.exit(1);
     }
@@ -97,25 +98,25 @@ const main = async () => {
 
   console.log(`Baseline (${source}): ${baseline}`);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let current = null;
     try {
       current = await fetchHash();
     } catch (err) {
-      console.log(`Attempt ${attempt}/${maxAttempts}: request failed (${err.message}).`);
+      console.log(`Attempt ${attempt}/${MAX_ATTEMPTS}: request failed (${err.message}).`);
     }
 
     if (current && current !== baseline) {
-      console.log(`Attempt ${attempt}/${maxAttempts}: new deploy detected (${current}).`);
+      console.log(`Attempt ${attempt}/${MAX_ATTEMPTS}: new deploy detected (${current}).`);
       record(current);
       setOutput('deployed', 'true');
       return;
     }
-    if (current) console.log(`Attempt ${attempt}/${maxAttempts}: unchanged.`);
-    if (attempt < maxAttempts) await sleep(interval);
+    if (current) console.log(`Attempt ${attempt}/${MAX_ATTEMPTS}: unchanged.`);
+    if (attempt < MAX_ATTEMPTS) await sleep(INTERVAL);
   }
 
-  console.log(`No new deploy detected after ${maxAttempts * interval} seconds.`);
+  console.log(`No new deploy detected after ${MAX_ATTEMPTS * INTERVAL} seconds.`);
   record(baseline);
   setOutput('deployed', 'false');
 };
