@@ -7,23 +7,9 @@ This is useful when your host's deploys are decoupled from the git push that
 triggers CI, so a workflow can't assume a new build is live the moment CI
 starts. It polls instead of guessing a fixed sleep duration.
 
-## How the baseline works
-
-The baseline is the hash this action recorded the last time it ran, restored
-from the Actions cache. That matters because a deploy can win the race against
-the runner: if the action captured its own "before" picture on startup, a deploy
-that already went live would have *already* been in that picture, and the action
-would poll a page that was never going to change again and report
-`deployed: false` on a deploy that succeeded.
-
-Comparing against the previous run's hash removes the race. If the deploy landed
-early, the first request already differs from the recorded hash and the action
-returns immediately.
-
-Before the first hash is recorded — the first run, a new cache scope, or an
-entry evicted after 7 days of no reads — there is nothing to compare against
-yet, so the action fetches a live baseline and logs a notice saying so. That one
-run is exposed to the race; every run after it is not.
+The baseline it compares against is the hash recorded by the previous run, kept
+in the Actions cache — so a deploy that went live before the workflow even
+started is still detected, rather than timing out.
 
 ## Usage
 
@@ -73,6 +59,10 @@ log prints the baseline and every observed hash if you need to debug a poll.
 
 ## Notes
 
+- **The first run has nothing to compare against**, so it baselines against the
+  page as it looks then and logs a notice. That one run can miss a deploy that
+  already went live; later runs can't. Same after a cache entry is evicted,
+  which happens after 7 days without a read.
 - **Cache scope.** Actions caches are scoped per branch, with the default
   branch's caches readable from every branch. A workflow that polls on pushes to
   `main` shares one baseline. A pull request branch reads `main`'s recorded hash
