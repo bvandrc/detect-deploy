@@ -1,4 +1,4 @@
-name: CI
+name: CI - Build & Test
 
 # dist/ is committed because a JS action runs the checked-in file, not the
 # source. Building and testing here means neither a stale bundle nor a broken
@@ -12,7 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       # Check out the branch itself rather than the detached commit, so a
@@ -26,12 +27,19 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
-      - run: npm run ts:check
-      - run: npm run build
+      
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check
+        run: npm run ts:check
+
+      - name: Build
+        run: npm run build
 
       # Runs against dist/, so it exercises the artifact that actually ships.
-      - run: npm test
+      - name: Test
+        run: npm test
 
       # A push authenticated with GITHUB_TOKEN does not start another workflow
       # run, so committing here cannot loop back into this job. Skipped for
