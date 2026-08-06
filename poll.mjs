@@ -15,12 +15,15 @@
 //   POLL_URL       the URL to poll
 //   MAX_ATTEMPTS   how many requests before giving up
 //   INTERVAL       seconds between requests
-//   ON_FIRST_RUN   "poll" or "assume-deployed", when no hash is recorded yet
 //   STATE_DIR      directory holding the recorded hash, restored from the cache
 //   GITHUB_OUTPUT  where step outputs are written
+//   ASSUME_DEPLOYED_ON_FIRST_RUN
+//                  "true" to report deployed without polling when no hash is
+//                  recorded yet
 //
 // Run it directly to test: POLL_URL=... MAX_ATTEMPTS=3 INTERVAL=1 \
-//   ON_FIRST_RUN=poll STATE_DIR=/tmp/s GITHUB_OUTPUT=/tmp/out node poll.mjs
+//   ASSUME_DEPLOYED_ON_FIRST_RUN=false STATE_DIR=/tmp/s \
+//   GITHUB_OUTPUT=/tmp/out node poll.mjs
 
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -34,13 +37,15 @@ const getEnvInteger = (name) => {
   return Number(raw);
 };
 
-const getEnvChoice = (name, choices) => {
+// Strict rather than truthy: action inputs arrive as strings, and the string
+// "false" is truthy in JS.
+const getEnvBoolean = (name) => {
   const raw = process.env[name] ?? '';
-  if (!choices.includes(raw)) {
-    console.log(`::error::${name} must be one of ${choices.join(', ')}; got '${raw}'.`);
+  if (raw !== 'true' && raw !== 'false') {
+    console.log(`::error::${name} must be true or false, got '${raw}'.`);
     process.exit(1);
   }
-  return raw;
+  return raw === 'true';
 };
 
 const TARGET_URL = process.env.POLL_URL;
@@ -49,7 +54,7 @@ const STATE_FILE = `${STATE_DIR}/hash`;
 const GITHUB_OUTPUT = process.env.GITHUB_OUTPUT;
 const MAX_ATTEMPTS = getEnvInteger('MAX_ATTEMPTS');
 const INTERVAL = getEnvInteger('INTERVAL');
-const ON_FIRST_RUN = getEnvChoice('ON_FIRST_RUN', ['poll', 'assume-deployed']);
+const ASSUME_DEPLOYED_ON_FIRST_RUN = getEnvBoolean('ASSUME_DEPLOYED_ON_FIRST_RUN');
 
 const setOutput = (key, value) =>
   fs.appendFileSync(GITHUB_OUTPUT, `${key}=${value}\n`);
@@ -93,11 +98,10 @@ const main = async () => {
 
   // Only reachable before the first hash is recorded (or after the entry is
   // evicted); there is nothing else to compare against yet, so the honest
-  // answer is "unknown" and on-first-run decides which way to resolve it.
+  // answer is "unknown" and the flag decides which way to resolve it.
   if (!baseline) {
-    const assumeDeployed = ON_FIRST_RUN === 'assume-deployed';
     console.log(
-      assumeDeployed
+      ASSUME_DEPLOYED_ON_FIRST_RUN
         ? `::notice::No hash recorded for ${TARGET_URL} yet; recording what it serves now and reporting deployed=true without polling.`
         : `::notice::No hash recorded for ${TARGET_URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
     );
@@ -112,7 +116,7 @@ const main = async () => {
 
     // Still fetched and recorded above: the next run needs a baseline either
     // way, and without one it would land here again.
-    if (assumeDeployed) {
+    if (ASSUME_DEPLOYED_ON_FIRST_RUN) {
       record(baseline);
       setOutput('deployed', 'true');
       return;
