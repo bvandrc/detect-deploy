@@ -19,7 +19,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { test } from 'node:test'
+import { afterEach, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const ACTION = path.join(
@@ -35,6 +35,8 @@ const HOST = '127.0.0.1'
 
 const sha256 = (body: string): string =>
   createHash('sha256').update(Buffer.from(body)).digest('hex')
+
+const openServers: { close: () => Promise<void> }[] = []
 
 /**
  * A server whose body can change after a set number of requests, so a deploy
@@ -74,7 +76,7 @@ const startTestServer = async ({
   await new Promise<void>((resolve) => server.listen(0, HOST, resolve))
   const { port } = server.address() as AddressInfo
   const origin = `http://${HOST}:${port}`
-  return {
+  const testServer = {
     url: `${origin}/`,
     redirectUrl: `${origin}/redirect`,
     get requests() {
@@ -83,7 +85,17 @@ const startTestServer = async ({
     close: () =>
       new Promise<void>((resolve) => void server.close(() => resolve())),
   }
+  openServers.push(testServer)
+  return testServer
 }
+
+// Cleanup is uniform, so it belongs in a hook; construction is not -- every
+// test needs a differently configured server -- so it stays in the test body.
+// A hook also closes the server when an assertion throws, which a trailing
+// close() in the test would not.
+afterEach(async () => {
+  await Promise.all(openServers.splice(0).map((s) => s.close()))
+})
 
 /** Parses the `key<<delim\nvalue\ndelim` format core.setOutput writes. */
 const parseOutputs = (text: string): Record<string, string> => {
@@ -177,46 +189,34 @@ const runAction = async ({
 
 test('first run baselines against the live page and records its hash', async () => {
   const server = await startTestServer({ body: '<html>a</html>' })
-  try {
-    const run = await runAction({ url: server.url })
-    assert.equal(run.outputs.deployed, 'false')
-    assert.equal(run.recorded, sha256('<html>a</html>'))
-    assert.match(run.stdout, /No hash recorded/)
-    assert.match(run.stdout, /Baseline \(live\)/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.url })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.equal(run.recorded, sha256('<html>a</html>'))
+  assert.match(run.stdout, /No hash recorded/)
+  assert.match(run.stdout, /Baseline \(live\)/)
 })
 
 test('a deploy that landed before the run started is detected on attempt 1', async () => {
   const server = await startTestServer({ body: '<html>new</html>' })
-  try {
-    const run = await runAction({
-      url: server.url,
-      recordedHash: sha256('<html>old</html>'),
-    })
-    assert.equal(run.outputs.deployed, 'true')
-    assert.match(run.stdout, /Baseline \(cache\)/)
-    assert.match(run.stdout, /Attempt 1\/3: new deploy detected/)
-    assert.equal(run.recorded, sha256('<html>new</html>'))
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    recordedHash: sha256('<html>old</html>'),
+  })
+  assert.equal(run.outputs.deployed, 'true')
+  assert.match(run.stdout, /Baseline \(cache\)/)
+  assert.match(run.stdout, /Attempt 1\/3: new deploy detected/)
+  assert.equal(run.recorded, sha256('<html>new</html>'))
 })
 
 test('an unchanged page polls to exhaustion and reports false', async () => {
   const server = await startTestServer({ body: '<html>same</html>' })
-  try {
-    const run = await runAction({
-      url: server.url,
-      recordedHash: sha256('<html>same</html>'),
-    })
-    assert.equal(run.outputs.deployed, 'false')
-    assert.equal(server.requests, 3, 'should poll exactly max-attempts times')
-    assert.match(run.stdout, /No new deploy detected/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    recordedHash: sha256('<html>same</html>'),
+  })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.equal(server.requests, 3, 'should poll exactly max-attempts times')
+  assert.match(run.stdout, /No new deploy detected/)
 })
 
 test('a deploy landing mid-poll is detected on the attempt it appears', async () => {
@@ -225,108 +225,80 @@ test('a deploy landing mid-poll is detected on the attempt it appears', async ()
     changeAfter: 2,
     nextBody: '<html>new</html>',
   })
-  try {
-    const run = await runAction({
-      url: server.url,
-      maxAttempts: 6,
-      recordedHash: sha256('<html>old</html>'),
-    })
-    assert.equal(run.outputs.deployed, 'true')
-    assert.match(run.stdout, /Attempt 3\/6: new deploy detected/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    maxAttempts: 6,
+    recordedHash: sha256('<html>old</html>'),
+  })
+  assert.equal(run.outputs.deployed, 'true')
+  assert.match(run.stdout, /Attempt 3\/6: new deploy detected/)
 })
 
 test('the baseline and the poll hash identically, so nothing reports a false change', async () => {
   // Would fail if the two were ever computed by different code paths.
   const server = await startTestServer({ body: '<html>stable</html>' })
-  try {
-    const run = await runAction({ url: server.url, maxAttempts: 2 })
-    assert.equal(run.outputs.deployed, 'false')
-    assert.doesNotMatch(run.stdout, /Attempt \d+\/\d+: new deploy detected/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.url, maxAttempts: 2 })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.doesNotMatch(run.stdout, /Attempt \d+\/\d+: new deploy detected/)
 })
 
 test('a malformed recorded hash is discarded rather than used as a baseline', async () => {
   const server = await startTestServer({ body: '<html>a</html>' })
-  try {
-    const run = await runAction({
-      url: server.url,
-      recordedHash: 'not-a-digest',
-    })
-    assert.ok(
-      run.annotations.some((a) =>
-        a.startsWith('::warning::Discarding malformed'),
-      ),
-    )
-    assert.match(run.stdout, /Baseline \(live\)/)
-    assert.equal(run.outputs.deployed, 'false')
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    recordedHash: 'not-a-digest',
+  })
+  assert.ok(
+    run.annotations.some((a) =>
+      a.startsWith('::warning::Discarding malformed'),
+    ),
+  )
+  assert.match(run.stdout, /Baseline \(live\)/)
+  assert.equal(run.outputs.deployed, 'false')
 })
 
 test('assume-deployed-on-first-run reports true without polling, but still records', async () => {
   const server = await startTestServer({ body: '<html>a</html>' })
-  try {
-    const run = await runAction({ url: server.url, assumeDeployed: true })
-    assert.equal(run.outputs.deployed, 'true')
-    assert.equal(
-      server.requests,
-      1,
-      'should fetch once to seed the baseline, then stop',
-    )
-    assert.equal(run.recorded, sha256('<html>a</html>'))
-    assert.doesNotMatch(run.stdout, /Attempt/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.url, assumeDeployed: true })
+  assert.equal(run.outputs.deployed, 'true')
+  assert.equal(
+    server.requests,
+    1,
+    'should fetch once to seed the baseline, then stop',
+  )
+  assert.equal(run.recorded, sha256('<html>a</html>'))
+  assert.doesNotMatch(run.stdout, /Attempt/)
 })
 
 test('assume-deployed-on-first-run does not short-circuit once a hash exists', async () => {
   const server = await startTestServer({ body: '<html>same</html>' })
-  try {
-    const run = await runAction({
-      url: server.url,
-      assumeDeployed: true,
-      recordedHash: sha256('<html>same</html>'),
-    })
-    assert.equal(run.outputs.deployed, 'false')
-    assert.match(run.stdout, /Attempt 1\/3/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    assumeDeployed: true,
+    recordedHash: sha256('<html>same</html>'),
+  })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.match(run.stdout, /Attempt 1\/3/)
 })
 
 test('failed requests count as unchanged rather than as a deploy', async () => {
   const server = await startTestServer({ body: 'missing', status: 404 })
-  try {
-    const run = await runAction({
-      url: server.url,
-      recordedHash: sha256('<html>old</html>'),
-    })
-    assert.equal(
-      run.outputs.deployed,
-      'false',
-      'a broken site must not look like a deploy',
-    )
-    assert.match(run.stdout, /request failed \(HTTP 404\)/)
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({
+    url: server.url,
+    recordedHash: sha256('<html>old</html>'),
+  })
+  assert.equal(
+    run.outputs.deployed,
+    'false',
+    'a broken site must not look like a deploy',
+  )
+  assert.match(run.stdout, /request failed \(HTTP 404\)/)
 })
 
 test('redirects are followed instead of hashing an empty redirect body', async () => {
   const server = await startTestServer({ body: '<html>target</html>' })
-  try {
-    const run = await runAction({ url: server.redirectUrl })
-    assert.equal(run.recorded, sha256('<html>target</html>'))
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.redirectUrl })
+  assert.equal(run.recorded, sha256('<html>target</html>'))
 })
 
 test('an unreachable url with no recorded hash fails the step', async () => {
@@ -342,26 +314,18 @@ test('an unreachable url with no recorded hash fails the step', async () => {
 
 test('a bad max-attempts fails with one annotation, not an unhandled stack', async () => {
   const server = await startTestServer({ body: 'x' })
-  try {
-    const run = await runAction({ url: server.url, maxAttempts: 'abc' })
-    assert.equal(run.code, 1)
-    assert.deepEqual(run.annotations, [
-      "::error::max-attempts must be a non-negative integer, got 'abc'.",
-    ])
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.url, maxAttempts: 'abc' })
+  assert.equal(run.code, 1)
+  assert.deepEqual(run.annotations, [
+    "::error::max-attempts must be a non-negative integer, got 'abc'.",
+  ])
 })
 
 test('a bad boolean input fails the step', async () => {
   const server = await startTestServer({ body: 'x' })
-  try {
-    const run = await runAction({ url: server.url, assumeDeployed: 'yes' })
-    assert.equal(run.code, 1)
-    assert.ok(run.annotations.some((a) => a.startsWith('::error::')))
-  } finally {
-    await server.close()
-  }
+  const run = await runAction({ url: server.url, assumeDeployed: 'yes' })
+  assert.equal(run.code, 1)
+  assert.ok(run.annotations.some((a) => a.startsWith('::error::')))
 })
 
 test('a missing url fails the step', async () => {
