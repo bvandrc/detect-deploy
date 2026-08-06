@@ -121,7 +121,7 @@ committed and must be rebuilt whenever `src/` changes:
 
 ```sh
 npm ci
-npm run all   # typecheck, bundle, test
+npm run all   # type-check, bundle, test
 ```
 
 The tests run the built bundle as a subprocess against a local HTTP server,

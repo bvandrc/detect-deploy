@@ -27,7 +27,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run typecheck
+      - run: npm run ts:check
       - run: npm run build
 
       # Runs against dist/, so it exercises the artifact that actually ships.
