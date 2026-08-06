@@ -46,6 +46,12 @@ runs:
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
         echo "key=$PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
 
+    # restore-keys is what actually finds the hash: `key` contains this run's id,
+    # so nothing has ever been saved under it and the exact-match lookup is
+    # expected to miss. It then falls back to the prefix, which matches every
+    # entry recorded for this url and returns the most recent -- the hash the
+    # previous run left behind. `key` is required by the action, and passing the
+    # save key here is the idiom for "miss, then fall through to the prefix".
     - name: Restore recorded hash
       uses: actions/cache/restore@v4
       with:
