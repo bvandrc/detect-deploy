@@ -30,10 +30,10 @@ runs:
   using: composite
   steps:
     # Cache keys are immutable, so every run writes a new key and reads back the
-    # most recent one matching the prefix. The url is digested rather than used
-    # directly because cache keys treat commas as separators. The job is part of
-    # the key so two jobs polling the same url in one run don't collide on it;
-    # it is not part of the prefix, so they still read each other's hashes.
+    # most recent one matching the prefix. The job is part of the key so two jobs
+    # polling the same url in one run don't collide on it; it is not part of the
+    # prefix, so they still read each other's hashes.
+    # The url is processed rather than used directly because cache keys treat commas as separators.
     - name: Derive cache key
       id: key
       shell: bash
@@ -41,8 +41,11 @@ runs:
         URL: ${{ inputs.url }}
       run: |
         set -euo pipefail
-        ID=$(printf '%s' "$URL" | sha256sum | cut -c1-32)
-        PREFIX="poll-for-deploy-v1-$ID-"
+        
+        URL_ID=$(printf '%s' "$URL" | sha256sum | cut -c1-32)
+
+        PREFIX="poll-for-deploy-v1-$URL_ID-"
+
         echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
         echo "key=$PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
 
