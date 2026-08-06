@@ -34,14 +34,14 @@ import crypto from 'node:crypto';
 const escapeData = (message) =>
   String(message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 
-const notice = (message) => console.log(`::notice::${escapeData(message)}`);
-const warning = (message) => console.log(`::warning::${escapeData(message)}`);
-const error = (message) => console.log(`::error::${escapeData(message)}`);
+const logInfo = (message) => console.log(`::notice::${escapeData(message)}`);
+const logWarning = (message) => console.log(`::warning::${escapeData(message)}`);
+const logError = (message) => console.log(`::error::${escapeData(message)}`);
 
 const getEnvInteger = (name) => {
   const raw = process.env[name] ?? '';
   if (!/^\d+$/.test(raw)) {
-    error(`${name} must be a non-negative integer, got '${raw}'.`);
+    logError(`${name} must be a non-negative integer, got '${raw}'.`);
     process.exit(1);
   }
   return Number(raw);
@@ -52,7 +52,7 @@ const getEnvInteger = (name) => {
 const getEnvBoolean = (name) => {
   const raw = process.env[name] ?? '';
   if (raw !== 'true' && raw !== 'false') {
-    error(`${name} must be true or false, got '${raw}'.`);
+    logError(`${name} must be true or false, got '${raw}'.`);
     process.exit(1);
   }
   return raw === 'true';
@@ -102,7 +102,7 @@ const main = async () => {
       baseline = cached;
       source = 'cache';
     } else {
-      warning(`Discarding malformed cached hash for ${TARGET_URL}.`);
+      logWarning(`Discarding malformed cached hash for ${TARGET_URL}.`);
     }
   }
 
@@ -110,7 +110,7 @@ const main = async () => {
   // evicted); there is nothing else to compare against yet, so the honest
   // answer is "unknown" and the flag decides which way to resolve it.
   if (!baseline) {
-    notice(
+    logInfo(
       ASSUME_DEPLOYED_ON_FIRST_RUN
         ? `No hash recorded for ${TARGET_URL} yet; recording what it serves now and reporting deployed=true without polling.`
         : `No hash recorded for ${TARGET_URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
@@ -118,7 +118,7 @@ const main = async () => {
     try {
       baseline = await fetchHash();
     } catch (err) {
-      error(
+      logError(
         `Failed to compute a checksum for ${TARGET_URL}; cannot establish a baseline. (${err.message})`,
       );
       process.exit(1);
@@ -161,6 +161,6 @@ const main = async () => {
 try {
   await main();
 } catch (err) {
-  error(err.stack || err.message);
+  logError(err.stack || err.message);
   process.exit(1);
 }
