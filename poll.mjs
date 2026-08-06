@@ -33,7 +33,7 @@ const getEnvInteger = (name) => {
   return Number(raw);
 };
 
-const URL = process.env.POLL_URL;
+const TARGET_URL = process.env.POLL_URL;
 const STATE_DIR = process.env.STATE_DIR;
 const STATE_FILE = `${STATE_DIR}/hash`;
 const GITHUB_OUTPUT = process.env.GITHUB_OUTPUT;
@@ -50,7 +50,7 @@ const sleep = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 // Redirects are followed: the curl this replaced did not, so a url that 301s
 // hashed an empty body that never changed.
 const fetchHash = async () => {
-  const res = await fetch(URL, { redirect: 'follow', signal: AbortSignal.timeout(30_000) });
+  const res = await fetch(TARGET_URL, { redirect: 'follow', signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = Buffer.from(await res.arrayBuffer());
   return crypto.createHash('sha256').update(body).digest('hex');
@@ -76,7 +76,7 @@ const main = async () => {
       baseline = cached;
       source = 'cache';
     } else {
-      console.log(`::warning::Discarding malformed cached hash for ${URL}.`);
+      console.log(`::warning::Discarding malformed cached hash for ${TARGET_URL}.`);
     }
   }
 
@@ -84,13 +84,13 @@ const main = async () => {
   // evicted); there is nothing else to compare against yet.
   if (!baseline) {
     console.log(
-      `::notice::No hash recorded for ${URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
+      `::notice::No hash recorded for ${TARGET_URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
     );
     try {
       baseline = await fetchHash();
     } catch (err) {
       console.log(
-        `::error::Failed to compute a checksum for ${URL}; cannot establish a baseline. (${err.message})`,
+        `::error::Failed to compute a checksum for ${TARGET_URL}; cannot establish a baseline. (${err.message})`,
       );
       process.exit(1);
     }
