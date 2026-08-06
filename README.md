@@ -60,23 +60,15 @@ log prints the baseline and every observed hash if you need to debug a poll.
 ## Notes
 
 - **The first run has nothing to compare against**, so it baselines against the
-  page as it looks then and logs a notice. That one run can miss a deploy that
-  already went live; later runs can't. Same after a cache entry is evicted,
-  which happens after 7 days without a read.
-- **Cache scope.** Actions caches are scoped per branch, with the default
-  branch's caches readable from every branch. A workflow that polls on pushes to
-  `main` shares one baseline. A pull request branch reads `main`'s recorded hash
-  but writes its own, so it won't disturb `main`'s baseline.
-- **The entry is keyed by URL**, so every job polling a given URL on a branch
-  shares one baseline, which is what you want when they are all watching the
-  same site.
-- **The hash is recorded even when the poll times out**, so a run of quiet
-  deploys keeps the entry alive rather than letting it age out.
+  page as it looks then and logs a notice — it can miss a deploy that already
+  went live. Later runs can't. Same after an entry is evicted, which happens
+  after 7 days without a read.
+- **One baseline per URL, per branch.** Actions caches are scoped to a branch,
+  with the default branch's readable from all of them, so a pull request branch
+  reads `main`'s hash but writes its own.
 - **This detects change, not authorship.** If something else updates the page
   between runs, the next run attributes that change to itself. For strict
   attribution, serve a build marker (a commit SHA in the HTML) and assert on it
   after this action reports `deployed`.
-- Failed requests during polling count as "unchanged", so a site that is briefly
-  down produces a timeout rather than a false positive.
-- Redirects are followed, so pointing `url` at something that 301s to the real
-  page works.
+- Failed requests count as "unchanged", so a briefly-down site times out instead
+  of reporting a false positive. Redirects are followed.
