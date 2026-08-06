@@ -61,7 +61,6 @@ jobs:
 | `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
 | `max-attempts`     | Maximum number of polling attempts before giving up.                                                                                                    | No       | `45`    |
 | `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
-| `cache-key`        | Identifier the recorded hash is stored under. Defaults to the `url`. Set it if one workflow polls the same URL twice, or if two jobs should share a baseline. | No       |         |
 
 ## Outputs
 
@@ -70,7 +69,6 @@ jobs:
 | `deployed`        | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.              |
 | `hash`            | The last hash observed at the URL, and the one recorded for the next run.                |
 | `baseline`        | The hash the poll compared against.                                                      |
-| `baseline-source` | `"cache"` if the baseline came from a previous run, `"live"` on the bootstrap run before any hash is recorded. |
 
 ## Notes
 
@@ -78,6 +76,9 @@ jobs:
   branch's caches readable from every branch. A workflow that polls on pushes to
   `main` shares one baseline. A pull request branch reads `main`'s recorded hash
   but writes its own, so it won't disturb `main`'s baseline.
+- **The entry is keyed by URL**, so every job polling a given URL on a branch
+  shares one baseline, which is what you want when they are all watching the
+  same site.
 - **The hash is recorded even when the poll times out**, so a run of quiet
   deploys keeps the entry alive rather than letting it age out.
 - **This detects change, not authorship.** If something else updates the page

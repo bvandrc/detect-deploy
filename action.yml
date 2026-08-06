@@ -18,13 +18,6 @@ inputs:
     description: Seconds to wait between polling attempts.
     required: false
     default: "20"
-  cache-key:
-    description: >
-      Identifier the recorded hash is stored under. Defaults to the `url`.
-      Set this explicitly if a single workflow polls the same URL more than
-      once, or if two jobs should deliberately share a baseline.
-    required: false
-    default: ""
 
 outputs:
   deployed:
@@ -38,29 +31,25 @@ outputs:
   baseline:
     description: The hash the poll compared against.
     value: ${{ steps.poll.outputs.baseline }}
-  baseline-source:
-    description: >
-      "cache" if the baseline came from a previous run's recorded hash,
-      "live" if it was fetched when this run started.
-    value: ${{ steps.poll.outputs.baseline-source }}
 
 runs:
   using: composite
   steps:
-    # Cache keys are immutable, so every run writes a new key and reads back
-    # the most recent one matching the prefix. The url is digested rather than
-    # used directly because cache keys treat commas as separators.
+    # Cache keys are immutable, so every run writes a new key and reads back the
+    # most recent one matching the prefix. The url is digested rather than used
+    # directly because cache keys treat commas as separators. The job is part of
+    # the key so two jobs polling the same url in one run don't collide on it;
+    # it is not part of the prefix, so they still read each other's hashes.
     - name: Derive cache key
       id: key
       shell: bash
       env:
         URL: ${{ inputs.url }}
-        CACHE_KEY: ${{ inputs.cache-key }}
       run: |
         set -euo pipefail
-        ID=$(printf '%s' "${CACHE_KEY:-$URL}" | sha256sum | cut -c1-32)
+        ID=$(printf '%s' "$URL" | sha256sum | cut -c1-32)
         echo "prefix=poll-for-deploy-v1-$ID-" >> "$GITHUB_OUTPUT"
-        echo "key=poll-for-deploy-v1-$ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+        echo "key=poll-for-deploy-v1-$ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
 
     - name: Restore recorded hash
       uses: actions/cache/restore@v4
@@ -136,7 +125,6 @@ runs:
 
         echo "Baseline ($SOURCE): $BASELINE"
         echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
-        echo "baseline-source=$SOURCE" >> "$GITHUB_OUTPUT"
 
         record() {
           printf '%s\n' "$1" > "$STATE_FILE"
