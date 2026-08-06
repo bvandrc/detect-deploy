@@ -62,92 +62,112 @@ runs:
     # would time out on a deploy that had in fact gone live.
     - name: Wait for new deploy
       id: poll
-      shell: bash
+      shell: node {0}
       env:
-        URL: ${{ inputs.url }}
+        POLL_URL: ${{ inputs.url }}
         MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INTERVAL: ${{ inputs.interval-seconds }}
         STATE_DIR: ${{ runner.temp }}/poll-for-deploy
       run: |
-        set -uo pipefail
+        const fs = require('fs');
+        const crypto = require('crypto');
 
-        for pair in "MAX_ATTEMPTS:$MAX_ATTEMPTS" "INTERVAL:$INTERVAL"; do
-          case "${pair#*:}" in
-            '' | *[!0-9]*)
-              echo "::error::${pair%%:*} must be a non-negative integer, got '${pair#*:}'." >&2
-              exit 1
-              ;;
-          esac
-        done
+        const url = process.env.POLL_URL;
+        const stateDir = process.env.STATE_DIR;
+        const stateFile = `${stateDir}/hash`;
 
-        STATE_FILE="$STATE_DIR/hash"
-        mkdir -p "$STATE_DIR"
-        # Deliberately outside STATE_DIR: only the hash belongs in the cache.
-        BODY="$STATE_DIR.body"
+        const integer = (name) => {
+          const raw = process.env[name] ?? '';
+          if (!/^\d+$/.test(raw)) {
+            console.log(`::error::${name} must be a non-negative integer, got '${raw}'.`);
+            process.exit(1);
+          }
+          return Number(raw);
+        };
 
-        # Baseline and poll hashes must be computed identically, or every run
-        # would report a change on its first attempt.
-        fetch_hash() {
-          curl -fsS --max-time 30 -o "$BODY" "$URL" || return 1
-          sha256sum "$BODY" | awk '{print $1}'
-        }
+        const maxAttempts = integer('MAX_ATTEMPTS');
+        const interval = integer('INTERVAL');
 
-        BASELINE=""
-        SOURCE="live"
-        if [ -f "$STATE_FILE" ]; then
-          CACHED=$(tr -d '[:space:]' < "$STATE_FILE")
-          # Ignore anything that isn't a sha256 digest, rather than baselining
-          # against a truncated or corrupted cache entry.
-          if printf '%s' "$CACHED" | grep -Eq '^[0-9a-f]{64}$'; then
-            BASELINE="$CACHED"
-            SOURCE="cache"
-          else
-            echo "::warning::Discarding malformed cached hash for $URL."
-          fi
-        fi
+        const setOutput = (key, value) =>
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+        const sleep = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 
-        # Only reachable before the first hash is recorded (or after the entry
-        # is evicted); there is nothing else to compare against yet.
-        if [ -z "$BASELINE" ]; then
-          echo "::notice::No hash recorded for $URL yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it."
-          BASELINE=$(fetch_hash)
-          if [ -z "$BASELINE" ]; then
-            echo "::error::Failed to compute a checksum for $URL; cannot establish a baseline." >&2
-            exit 1
-          fi
-        fi
+        // Used for both the baseline and every poll, so the two can never be
+        // hashed differently -- which would report a change on the first attempt
+        // of every run. Redirects are followed: the curl this replaced did not,
+        // so a url that 301s hashed an empty body that never changed.
+        const fetchHash = async () => {
+          const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30_000) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const body = Buffer.from(await res.arrayBuffer());
+          return crypto.createHash('sha256').update(body).digest('hex');
+        };
 
-        echo "Baseline ($SOURCE): $BASELINE"
+        // The hash output is internal: it tells the save step there is a hash
+        // worth persisting. Only `deployed` is exposed by the action.
+        const record = (hash) => {
+          fs.writeFileSync(stateFile, `${hash}\n`);
+          setOutput('hash', hash);
+        };
 
-        # The step output is internal: it tells the save step there is a hash
-        # worth persisting. Only `deployed` is exposed by the action.
-        record() {
-          printf '%s\n' "$1" > "$STATE_FILE"
-          echo "hash=$1" >> "$GITHUB_OUTPUT"
-        }
+        const main = async () => {
+          fs.mkdirSync(stateDir, { recursive: true });
 
-        ATTEMPT=0
-        while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
-          ATTEMPT=$((ATTEMPT + 1))
-          CURRENT=$(fetch_hash)
-          if [ -z "$CURRENT" ]; then
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: request failed."
-          elif [ "$CURRENT" != "$BASELINE" ]; then
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: new deploy detected ($CURRENT)."
-            record "$CURRENT"
-            echo "deployed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          else
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: unchanged."
-          fi
-          if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-            sleep "$INTERVAL"
-          fi
-        done
+          let baseline = null;
+          let source = 'live';
+          if (fs.existsSync(stateFile)) {
+            const cached = fs.readFileSync(stateFile, 'utf8').trim();
+            // Ignore anything that isn't a sha256 digest, rather than baselining
+            // against a truncated or corrupted cache entry.
+            if (/^[0-9a-f]{64}$/.test(cached)) {
+              baseline = cached;
+              source = 'cache';
+            } else {
+              console.log(`::warning::Discarding malformed cached hash for ${url}.`);
+            }
+          }
 
-        echo "No new deploy detected after $((MAX_ATTEMPTS * INTERVAL)) seconds."
-        record "$BASELINE"
-        echo "deployed=false" >> "$GITHUB_OUTPUT"
+          // Only reachable before the first hash is recorded (or after the entry
+          // is evicted); there is nothing else to compare against yet.
+          if (!baseline) {
+            console.log(`::notice::No hash recorded for ${url} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`);
+            try {
+              baseline = await fetchHash();
+            } catch (err) {
+              console.log(`::error::Failed to compute a checksum for ${url}; cannot establish a baseline. (${err.message})`);
+              process.exit(1);
+            }
+          }
+
+          console.log(`Baseline (${source}): ${baseline}`);
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            let current = null;
+            try {
+              current = await fetchHash();
+            } catch (err) {
+              console.log(`Attempt ${attempt}/${maxAttempts}: request failed (${err.message}).`);
+            }
+
+            if (current && current !== baseline) {
+              console.log(`Attempt ${attempt}/${maxAttempts}: new deploy detected (${current}).`);
+              record(current);
+              setOutput('deployed', 'true');
+              return;
+            }
+            if (current) console.log(`Attempt ${attempt}/${maxAttempts}: unchanged.`);
+            if (attempt < maxAttempts) await sleep(interval);
+          }
+
+          console.log(`No new deploy detected after ${maxAttempts * interval} seconds.`);
+          record(baseline);
+          setOutput('deployed', 'false');
+        };
+
+        main().catch((err) => {
+          console.log(`::error::${err.stack || err.message}`);
+          process.exit(1);
+        });
 
     # Runs even when the poll timed out, so the recorded hash stays fresh
     # against the cache's eviction window.

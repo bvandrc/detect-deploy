@@ -88,3 +88,5 @@ log prints the baseline and every observed hash if you need to debug a poll.
   after this action reports `deployed`.
 - Failed requests during polling count as "unchanged", so a site that is briefly
   down produces a timeout rather than a false positive.
+- Redirects are followed, so pointing `url` at something that 301s to the real
+  page works.
