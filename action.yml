@@ -42,8 +42,9 @@ runs:
       run: |
         set -euo pipefail
         ID=$(printf '%s' "$URL" | sha256sum | cut -c1-32)
-        echo "prefix=poll-for-deploy-v1-$ID-" >> "$GITHUB_OUTPUT"
-        echo "key=poll-for-deploy-v1-$ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
+        PREFIX="poll-for-deploy-v1-$ID-"
+        echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+        echo "key=$PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
 
     - name: Restore recorded hash
       uses: actions/cache/restore@v4
