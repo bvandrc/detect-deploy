@@ -64,11 +64,12 @@ jobs:
 
 ## Outputs
 
-| Name              | Description                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `deployed`        | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.              |
-| `hash`            | The last hash observed at the URL, and the one recorded for the next run.                |
-| `baseline`        | The hash the poll compared against.                                                      |
+| Name       | Description                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| `deployed` | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.  |
+
+The hashes themselves are an implementation detail and aren't exposed; the run
+log prints the baseline and every observed hash if you need to debug a poll.
 
 ## Notes
 

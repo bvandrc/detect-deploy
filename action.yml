@@ -25,12 +25,6 @@ outputs:
       "true" if a new deploy was detected before max-attempts was reached,
       "false" otherwise.
     value: ${{ steps.poll.outputs.deployed }}
-  hash:
-    description: The last hash observed at the URL, and the one recorded for the next run.
-    value: ${{ steps.poll.outputs.hash }}
-  baseline:
-    description: The hash the poll compared against.
-    value: ${{ steps.poll.outputs.baseline }}
 
 runs:
   using: composite
@@ -124,8 +118,9 @@ runs:
         fi
 
         echo "Baseline ($SOURCE): $BASELINE"
-        echo "baseline=$BASELINE" >> "$GITHUB_OUTPUT"
 
+        # The step output is internal: it tells the save step there is a hash
+        # worth persisting. Only `deployed` is exposed by the action.
         record() {
           printf '%s\n' "$1" > "$STATE_FILE"
           echo "hash=$1" >> "$GITHUB_OUTPUT"
