@@ -18,6 +18,16 @@ inputs:
     description: Seconds to wait between polling attempts.
     required: false
     default: "20"
+  on-first-run:
+    description: >
+      What to report when no hash has been recorded yet -- the first run, or
+      the first after a cache entry is evicted. "poll" baselines against the
+      page as it looks now and polls as usual, so a deploy that lands during
+      the window is still caught, but one that already went live is not.
+      "assume-deployed" records the current page and reports deployed=true
+      immediately, so dependent steps run instead of being skipped.
+    required: false
+    default: "poll"
 
 outputs:
   deployed:
@@ -69,6 +79,7 @@ runs:
         POLL_URL: ${{ inputs.url }}
         MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INTERVAL: ${{ inputs.interval-seconds }}
+        ON_FIRST_RUN: ${{ inputs.on-first-run }}
         STATE_DIR: ${{ runner.temp }}/poll-for-deploy
       run: node "$GITHUB_ACTION_PATH/poll.mjs"
 

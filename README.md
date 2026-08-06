@@ -47,6 +47,7 @@ jobs:
 | `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
 | `max-attempts`     | Maximum number of polling attempts before giving up.                                                                                                    | No       | `45`    |
 | `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
+| `on-first-run`     | What to report when no hash is recorded yet: `poll` to baseline against the page as it looks now and poll, or `assume-deployed` to report `true` at once. | No       | `poll`  |
 
 ## Outputs
 
@@ -59,10 +60,14 @@ log prints the baseline and every observed hash if you need to debug a poll.
 
 ## Notes
 
-- **The first run has nothing to compare against**, so it baselines against the
-  page as it looks then and logs a notice — it can miss a deploy that already
-  went live. Later runs can't. Same after an entry is evicted, which happens
-  after 7 days without a read.
+- **The first run has nothing to compare against**, so the answer is genuinely
+  unknown and `on-first-run` decides how to resolve it: `poll` (the default)
+  baselines against the page as it looks then, which can miss a deploy that
+  already went live; `assume-deployed` reports `true` at once, so dependent
+  steps run rather than being skipped — against a page that may still be the
+  old build. Either way the hash is recorded, so later runs are exact. This
+  also applies after an entry is evicted, which happens after 7 days without a
+  read.
 - **One baseline per URL, per branch.** Actions caches are scoped to a branch,
   with the default branch's readable from all of them, so a pull request branch
   reads `main`'s hash but writes its own.
