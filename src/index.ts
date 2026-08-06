@@ -77,15 +77,20 @@ const main = async (): Promise<void> => {
   // A cache miss is normal and a cache failure is survivable -- the run just
   // falls back to a live baseline -- so neither is allowed to fail the step.
   const restoreBaseline = async (): Promise<string | null> => {
-    try {
-      const matched = await cache.restoreCache([stateDir], cacheKey, [cachePrefix]);
-      if (!matched) return null;
-      core.debug(`Restored ${matched}`);
-    } catch (err) {
-      core.warning(`Could not read the recorded hash: ${message(err)}`);
-      return null;
+    if (cache.isFeatureAvailable()) {
+      try {
+        const matched = await cache.restoreCache([stateDir], cacheKey, [cachePrefix]);
+        if (matched) core.debug(`Restored ${matched}`);
+      } catch (err) {
+        core.warning(`Could not read the recorded hash: ${message(err)}`);
+      }
+    } else {
+      core.debug('Actions cache is unavailable; the baseline cannot carry across runs.');
     }
 
+    // Read whatever is on disk rather than trusting the restore result: the
+    // file is the state, the cache is only how it usually gets here. A second
+    // invocation in the same job finds it even if the save lost a key race.
     if (!fs.existsSync(stateFile)) return null;
     const cached = fs.readFileSync(stateFile, 'utf8').trim();
     // Ignore anything that isn't a sha256 digest, rather than baselining
@@ -161,7 +166,7 @@ const main = async (): Promise<void> => {
     record(baseline);
     core.setOutput('deployed', 'false');
   } finally {
-    if (hashToRecord) {
+    if (hashToRecord && cache.isFeatureAvailable()) {
       try {
         await cache.saveCache([stateDir], cacheKey);
       } catch (err) {
@@ -173,8 +178,5 @@ const main = async (): Promise<void> => {
   }
 };
 
-try {
-  await main();
-} catch (err) {
-  core.setFailed(message(err));
-}
+// Not top-level await: the bundle is CommonJS, which has no such thing.
+main().catch((err: unknown) => core.setFailed(message(err)));

@@ -4,9 +4,10 @@
   "private": true,
   "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",
   "scripts": {
-    "build": "ncc build src/index.ts -o dist --minify",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --minify",
     "typecheck": "tsc --noEmit",
-    "all": "npm run typecheck && npm run build"
+    "all": "npm run typecheck && npm run build && npm test",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@actions/cache": "^6.2.0",
@@ -14,7 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@vercel/ncc": "^0.38.4",
-    "typescript": "^5.6.0"
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
   }
 }

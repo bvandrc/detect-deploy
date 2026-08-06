@@ -1,0 +1,62 @@
+name: CI
+
+# dist/ is committed because a JS action runs the checked-in file, not the
+# source. Building and testing here means neither a stale bundle nor a broken
+# one can ship because someone skipped a local step.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the branch itself rather than the detached commit, so a
+      # rebuilt bundle has somewhere to land.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      # Runs against dist/, so it exercises the artifact that actually ships.
+      - run: npm test
+
+      # A push authenticated with GITHUB_TOKEN does not start another workflow
+      # run, so committing here cannot loop back into this job. Skipped for
+      # pull_request events, where the checkout may belong to a fork.
+      - name: Commit dist if it changed
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- dist; then
+            echo "dist is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git commit -m "build: rebuild dist"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      # On a pull request the bundle can't be committed, so fail instead of
+      # merging a dist/ that doesn't match src/.
+      - name: Check dist is up to date
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/ is out of date. Run 'npm run build' and commit the result."
+            git diff --stat -- dist
+            exit 1
+          fi

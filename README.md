@@ -121,8 +121,16 @@ committed and must be rebuilt whenever `src/` changes:
 
 ```sh
 npm ci
-npm run all   # typecheck, then bundle with ncc
+npm run all   # typecheck, bundle, test
 ```
 
-Pushing without rebuilding is safe — the `Build dist` workflow rebuilds and
-commits the bundle if it differs from what you pushed.
+The tests run the built bundle as a subprocess against a local HTTP server,
+feeding it `INPUT_*` variables the way a runner does — so they cover the
+artifact that actually ships rather than the source it came from. The Actions
+cache isn't reachable outside a workflow, so the action skips it and reads the
+recorded hash straight off disk; seeding that file is how the tests cover the
+cache-hit paths.
+
+Pushing without rebuilding is safe on a branch — CI rebuilds and commits the
+bundle if it differs from what you pushed. On a pull request it can't commit,
+so it fails instead.
