@@ -1,10 +1,10 @@
 name: Poll for Deploy
-description: >
-  Polls a URL until its content changes from a pre-recorded baseline, to
-  detect when a new deploy has gone live. Useful for hosts where deploys are
-  decoupled from the git push that triggers CI, so you can't assume the new
-  build is live immediately.
+description: Polls a URL until its content changes, to detect when a deploy has actually gone live.
 author: bvandrc
+
+branding:
+  icon: refresh-cw
+  color: blue
 
 inputs:
   url:
