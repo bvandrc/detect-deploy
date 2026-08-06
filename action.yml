@@ -18,13 +18,6 @@ inputs:
     description: Seconds to wait between polling attempts.
     required: false
     default: "20"
-  use-cache:
-    description: >
-      Whether to use the hash recorded by the previous run as the baseline,
-      instead of fetching a fresh one when the action starts. Set to "false"
-      to always fetch a live baseline.
-    required: false
-    default: "true"
   cache-key:
     description: >
       Identifier the recorded hash is stored under. Defaults to the `url`.
@@ -70,7 +63,6 @@ runs:
         echo "key=poll-for-deploy-v1-$ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
     - name: Restore recorded hash
-      if: inputs.use-cache == 'true'
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/poll-for-deploy
@@ -92,7 +84,6 @@ runs:
         URL: ${{ inputs.url }}
         MAX_ATTEMPTS: ${{ inputs.max-attempts }}
         INTERVAL: ${{ inputs.interval-seconds }}
-        USE_CACHE: ${{ inputs.use-cache }}
         STATE_DIR: ${{ runner.temp }}/poll-for-deploy
       run: |
         set -uo pipefail
@@ -120,7 +111,7 @@ runs:
 
         BASELINE=""
         SOURCE="live"
-        if [ "$USE_CACHE" = "true" ] && [ -f "$STATE_FILE" ]; then
+        if [ -f "$STATE_FILE" ]; then
           CACHED=$(tr -d '[:space:]' < "$STATE_FILE")
           # Ignore anything that isn't a sha256 digest, rather than baselining
           # against a truncated or corrupted cache entry.
@@ -132,10 +123,10 @@ runs:
           fi
         fi
 
+        # Only reachable before the first hash is recorded (or after the entry
+        # is evicted); there is nothing else to compare against yet.
         if [ -z "$BASELINE" ]; then
-          if [ "$USE_CACHE" = "true" ]; then
-            echo "::notice::No hash recorded for $URL yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it."
-          fi
+          echo "::notice::No hash recorded for $URL yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it."
           BASELINE=$(fetch_hash)
           if [ -z "$BASELINE" ]; then
             echo "::error::Failed to compute a checksum for $URL; cannot establish a baseline." >&2
@@ -178,7 +169,7 @@ runs:
     # Runs even when the poll timed out, so the recorded hash stays fresh
     # against the cache's eviction window.
     - name: Record hash for the next run
-      if: always() && inputs.use-cache == 'true' && steps.poll.outputs.hash != ''
+      if: always() && steps.poll.outputs.hash != ''
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/poll-for-deploy

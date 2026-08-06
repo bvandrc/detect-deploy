@@ -20,10 +20,10 @@ Comparing against the previous run's hash removes the race. If the deploy landed
 early, the first request already differs from the recorded hash and the action
 returns immediately.
 
-When no hash has been recorded yet — the first run, a new cache scope, or an
-entry evicted after 7 days of no reads — the action falls back to fetching a
-live baseline, logs a notice saying so, and that one run is exposed to the race
-again. Subsequent runs are not.
+Before the first hash is recorded — the first run, a new cache scope, or an
+entry evicted after 7 days of no reads — there is nothing to compare against
+yet, so the action fetches a live baseline and logs a notice saying so. That one
+run is exposed to the race; every run after it is not.
 
 ## Usage
 
@@ -61,7 +61,6 @@ jobs:
 | `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
 | `max-attempts`     | Maximum number of polling attempts before giving up.                                                                                                    | No       | `45`    |
 | `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
-| `use-cache`        | Whether to baseline against the previous run's recorded hash. `"false"` always fetches a live baseline.                                                  | No       | `true`  |
 | `cache-key`        | Identifier the recorded hash is stored under. Defaults to the `url`. Set it if one workflow polls the same URL twice, or if two jobs should share a baseline. | No       |         |
 
 ## Outputs
@@ -71,7 +70,7 @@ jobs:
 | `deployed`        | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.              |
 | `hash`            | The last hash observed at the URL, and the one recorded for the next run.                |
 | `baseline`        | The hash the poll compared against.                                                      |
-| `baseline-source` | `"cache"` if the baseline came from a previous run, `"live"` if fetched during this run.  |
+| `baseline-source` | `"cache"` if the baseline came from a previous run, `"live"` on the bootstrap run before any hash is recorded. |
 
 ## Notes
 
