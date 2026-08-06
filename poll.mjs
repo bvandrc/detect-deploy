@@ -28,10 +28,20 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
+// A workflow command is a single line, so %, CR and LF in the message have to
+// be encoded or it is truncated at the first newline -- which is what happens
+// to a multi-line stack trace. Same encoding @actions/core applies.
+const escapeData = (message) =>
+  String(message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+
+const notice = (message) => console.log(`::notice::${escapeData(message)}`);
+const warning = (message) => console.log(`::warning::${escapeData(message)}`);
+const error = (message) => console.log(`::error::${escapeData(message)}`);
+
 const getEnvInteger = (name) => {
   const raw = process.env[name] ?? '';
   if (!/^\d+$/.test(raw)) {
-    console.log(`::error::${name} must be a non-negative integer, got '${raw}'.`);
+    error(`${name} must be a non-negative integer, got '${raw}'.`);
     process.exit(1);
   }
   return Number(raw);
@@ -42,7 +52,7 @@ const getEnvInteger = (name) => {
 const getEnvBoolean = (name) => {
   const raw = process.env[name] ?? '';
   if (raw !== 'true' && raw !== 'false') {
-    console.log(`::error::${name} must be true or false, got '${raw}'.`);
+    error(`${name} must be true or false, got '${raw}'.`);
     process.exit(1);
   }
   return raw === 'true';
@@ -92,7 +102,7 @@ const main = async () => {
       baseline = cached;
       source = 'cache';
     } else {
-      console.log(`::warning::Discarding malformed cached hash for ${TARGET_URL}.`);
+      warning(`Discarding malformed cached hash for ${TARGET_URL}.`);
     }
   }
 
@@ -100,16 +110,16 @@ const main = async () => {
   // evicted); there is nothing else to compare against yet, so the honest
   // answer is "unknown" and the flag decides which way to resolve it.
   if (!baseline) {
-    console.log(
+    notice(
       ASSUME_DEPLOYED_ON_FIRST_RUN
-        ? `::notice::No hash recorded for ${TARGET_URL} yet; recording what it serves now and reporting deployed=true without polling.`
-        : `::notice::No hash recorded for ${TARGET_URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
+        ? `No hash recorded for ${TARGET_URL} yet; recording what it serves now and reporting deployed=true without polling.`
+        : `No hash recorded for ${TARGET_URL} yet, so this run is baselining against the page as it looks now. If the deploy already went live, this run may not detect it.`,
     );
     try {
       baseline = await fetchHash();
     } catch (err) {
-      console.log(
-        `::error::Failed to compute a checksum for ${TARGET_URL}; cannot establish a baseline. (${err.message})`,
+      error(
+        `Failed to compute a checksum for ${TARGET_URL}; cannot establish a baseline. (${err.message})`,
       );
       process.exit(1);
     }
@@ -151,6 +161,6 @@ const main = async () => {
 try {
   await main();
 } catch (err) {
-  console.log(`::error::${err.stack || err.message}`);
+  error(err.stack || err.message);
   process.exit(1);
 }
