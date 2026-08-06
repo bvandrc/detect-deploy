@@ -23,37 +23,37 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ACTION = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
+
 // Loopback rather than localhost: it can't resolve to IPv6 on some machines
 // while the server listens on IPv4, and it keeps the tests off the network.
 const HOST = '127.0.0.1';
+
 const sha256 = (body: string): string =>
   createHash('sha256').update(Buffer.from(body)).digest('hex');
 
-interface ServerOptions {
-  body: string;
-  /** Serve `nextBody` once this many requests have been answered. */
-  changeAfter?: number | null;
-  nextBody?: string | null;
-  status?: number;
-}
 
-interface TestServer {
-  url: string;
-  redirectUrl: string;
-  readonly requests: number;
-  close: () => Promise<void>;
-}
 
 /**
  * A server whose body can change after a set number of requests, so a deploy
  * landing mid-poll is deterministic instead of timing-dependent.
  */
-const startServer = async ({
+const startTestServer = async ({
   body,
   changeAfter = null,
   nextBody = null,
   status = 200,
-}: ServerOptions): Promise<TestServer> => {
+}: {
+  body: string;
+  /** Serve `nextBody` once this many requests have been answered. */
+  changeAfter?: number | null;
+  nextBody?: string | null;
+  status?: number;
+}): Promise<{
+  url: string;
+  redirectUrl: string;
+  readonly requests: number;
+  close: () => Promise<void>;
+}> => {
   let requests = 0;
   let current = body;
   const server = http.createServer((req, res) => {
@@ -96,24 +96,7 @@ const parseOutputs = (text: string): Record<string, string> => {
   return outputs;
 };
 
-interface RunOptions {
-  /** Omitted entirely when undefined, to exercise the missing-input path. */
-  url?: string | undefined;
-  maxAttempts?: number | string;
-  interval?: number | string;
-  assumeDeployed?: boolean | string;
-  recordedHash?: string | null;
-}
 
-interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-  outputs: Record<string, string>;
-  /** The hash left on disk for the next run, or null if none was written. */
-  recorded: string | null;
-  annotations: string[];
-}
 
 const runAction = async ({
   url,
@@ -121,7 +104,22 @@ const runAction = async ({
   interval = 0,
   assumeDeployed = false,
   recordedHash = null,
-}: RunOptions = {}): Promise<RunResult> => {
+}:  {
+  /** Omitted entirely when undefined, to exercise the missing-input path. */
+  url?: string | undefined;
+  maxAttempts?: number | string;
+  interval?: number | string;
+  assumeDeployed?: boolean | string;
+  recordedHash?: string | null;
+} = {}): Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+  outputs: Record<string, string>;
+  /** The hash left on disk for the next run, or null if none was written. */
+  recorded: string | null;
+  annotations: string[];
+}> => {
   const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-test-'));
   const outputFile = path.join(runnerTemp, 'github-output');
   fs.writeFileSync(outputFile, '');
@@ -166,7 +164,7 @@ const runAction = async ({
 };
 
 test('first run baselines against the live page and records its hash', async () => {
-  const server = await startServer({ body: '<html>a</html>' });
+  const server = await startTestServer({ body: '<html>a</html>' });
   try {
     const run = await runAction({ url: server.url });
     assert.equal(run.outputs['deployed'], 'false');
@@ -179,7 +177,7 @@ test('first run baselines against the live page and records its hash', async () 
 });
 
 test('a deploy that landed before the run started is detected on attempt 1', async () => {
-  const server = await startServer({ body: '<html>new</html>' });
+  const server = await startTestServer({ body: '<html>new</html>' });
   try {
     const run = await runAction({ url: server.url, recordedHash: sha256('<html>old</html>') });
     assert.equal(run.outputs['deployed'], 'true');
@@ -192,7 +190,7 @@ test('a deploy that landed before the run started is detected on attempt 1', asy
 });
 
 test('an unchanged page polls to exhaustion and reports false', async () => {
-  const server = await startServer({ body: '<html>same</html>' });
+  const server = await startTestServer({ body: '<html>same</html>' });
   try {
     const run = await runAction({ url: server.url, recordedHash: sha256('<html>same</html>') });
     assert.equal(run.outputs['deployed'], 'false');
@@ -204,7 +202,7 @@ test('an unchanged page polls to exhaustion and reports false', async () => {
 });
 
 test('a deploy landing mid-poll is detected on the attempt it appears', async () => {
-  const server = await startServer({
+  const server = await startTestServer({
     body: '<html>old</html>',
     changeAfter: 2,
     nextBody: '<html>new</html>',
@@ -224,7 +222,7 @@ test('a deploy landing mid-poll is detected on the attempt it appears', async ()
 
 test('the baseline and the poll hash identically, so nothing reports a false change', async () => {
   // Would fail if the two were ever computed by different code paths.
-  const server = await startServer({ body: '<html>stable</html>' });
+  const server = await startTestServer({ body: '<html>stable</html>' });
   try {
     const run = await runAction({ url: server.url, maxAttempts: 2 });
     assert.equal(run.outputs['deployed'], 'false');
@@ -235,7 +233,7 @@ test('the baseline and the poll hash identically, so nothing reports a false cha
 });
 
 test('a malformed recorded hash is discarded rather than used as a baseline', async () => {
-  const server = await startServer({ body: '<html>a</html>' });
+  const server = await startTestServer({ body: '<html>a</html>' });
   try {
     const run = await runAction({ url: server.url, recordedHash: 'not-a-digest' });
     assert.ok(run.annotations.some((a) => a.startsWith('::warning::Discarding malformed')));
@@ -247,7 +245,7 @@ test('a malformed recorded hash is discarded rather than used as a baseline', as
 });
 
 test('assume-deployed-on-first-run reports true without polling, but still records', async () => {
-  const server = await startServer({ body: '<html>a</html>' });
+  const server = await startTestServer({ body: '<html>a</html>' });
   try {
     const run = await runAction({ url: server.url, assumeDeployed: true });
     assert.equal(run.outputs['deployed'], 'true');
@@ -260,7 +258,7 @@ test('assume-deployed-on-first-run reports true without polling, but still recor
 });
 
 test('assume-deployed-on-first-run does not short-circuit once a hash exists', async () => {
-  const server = await startServer({ body: '<html>same</html>' });
+  const server = await startTestServer({ body: '<html>same</html>' });
   try {
     const run = await runAction({
       url: server.url,
@@ -275,7 +273,7 @@ test('assume-deployed-on-first-run does not short-circuit once a hash exists', a
 });
 
 test('failed requests count as unchanged rather than as a deploy', async () => {
-  const server = await startServer({ body: 'missing', status: 404 });
+  const server = await startTestServer({ body: 'missing', status: 404 });
   try {
     const run = await runAction({ url: server.url, recordedHash: sha256('<html>old</html>') });
     assert.equal(run.outputs['deployed'], 'false', 'a broken site must not look like a deploy');
@@ -286,7 +284,7 @@ test('failed requests count as unchanged rather than as a deploy', async () => {
 });
 
 test('redirects are followed instead of hashing an empty redirect body', async () => {
-  const server = await startServer({ body: '<html>target</html>' });
+  const server = await startTestServer({ body: '<html>target</html>' });
   try {
     const run = await runAction({ url: server.redirectUrl });
     assert.equal(run.recorded, sha256('<html>target</html>'));
@@ -303,7 +301,7 @@ test('an unreachable url with no recorded hash fails the step', async () => {
 });
 
 test('a bad max-attempts fails with one annotation, not an unhandled stack', async () => {
-  const server = await startServer({ body: 'x' });
+  const server = await startTestServer({ body: 'x' });
   try {
     const run = await runAction({ url: server.url, maxAttempts: 'abc' });
     assert.equal(run.code, 1);
@@ -316,7 +314,7 @@ test('a bad max-attempts fails with one annotation, not an unhandled stack', asy
 });
 
 test('a bad boolean input fails the step', async () => {
-  const server = await startServer({ body: 'x' });
+  const server = await startTestServer({ body: 'x' });
   try {
     const run = await runAction({ url: server.url, assumeDeployed: 'yes' });
     assert.equal(run.code, 1);
