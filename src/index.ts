@@ -55,7 +55,7 @@ const main = async (): Promise<void> => {
   )
 
   // A directory, because the cache API caches paths rather than values.
-  const stateDir = join(process.env.RUNNER_TEMP ?? tmpdir(), 'poll-for-deploy')
+  const stateDir = join(process.env.RUNNER_TEMP ?? tmpdir(), 'wait-for-deploy')
   const stateFile = join(stateDir, 'hash')
 
   // Cache entries are immutable, so every run writes a new key and reads back
@@ -68,7 +68,7 @@ const main = async (): Promise<void> => {
     .update(targetUrl)
     .digest('hex')
     .slice(0, 32)
-  const cachePrefix = `poll-for-deploy-v1-${urlId}-`
+  const cachePrefix = `wait-for-deploy-v1-${urlId}-`
   const cacheKey =
     cachePrefix +
     [

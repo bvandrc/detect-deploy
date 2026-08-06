@@ -1,4 +1,4 @@
-name: Poll for Deploy
+name: Wait for Deploy
 description: >-
   Polls a URL until its content changes from the last run's, to detect when a
   deploy has gone live -- including one that landed before the workflow started.

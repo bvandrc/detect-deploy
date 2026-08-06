@@ -1,5 +1,5 @@
 {
-  "name": "poll-for-deploy",
+  "name": "wait-for-deploy",
   "version": "1.0.0",
   "private": true,
   "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",

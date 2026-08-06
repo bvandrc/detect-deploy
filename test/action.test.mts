@@ -136,11 +136,11 @@ const runAction = async ({
   recorded: string | null
   annotations: string[]
 }> => {
-  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-test-'))
+  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'wait-test-'))
   const outputFile = path.join(runnerTemp, 'github-output')
   fs.writeFileSync(outputFile, '')
 
-  const stateDir = path.join(runnerTemp, 'poll-for-deploy')
+  const stateDir = path.join(runnerTemp, 'wait-for-deploy')
   const stateFile = path.join(stateDir, 'hash')
   if (recordedHash !== null) {
     fs.mkdirSync(stateDir, { recursive: true })

@@ -1,6 +1,6 @@
-# poll-for-deploy
+# wait-for-deploy
 
-A GitHub Action that polls a URL until its content changes from the last hash
+A GitHub Action that waits on a URL, polling it until its content changes from the last hash
 it recorded, to detect when a new deploy has gone live.
 
 This is useful when your host's deploys are decoupled from the git push that
@@ -22,12 +22,12 @@ jobs:
     if: github.event_name == 'push'
 
     outputs:
-      deployed: ${{ steps.poll.outputs.deployed }}
+      deployed: ${{ steps.wait.outputs.deployed }}
 
     steps:
-      - name: Poll for deploy
-        id: poll
-        uses: bvandrc/poll-for-deploy@v1
+      - name: Wait for deploy
+        id: wait
+        uses: bvandrc/wait-for-deploy@v1
         with:
           url: https://example.com
 
@@ -60,7 +60,7 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: bvandrc/poll-for-deploy@v1
+      - uses: bvandrc/wait-for-deploy@v1
         with:
           url: https://example.com
           max-attempts: "1"
