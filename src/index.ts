@@ -1,14 +1,16 @@
-// Polls a URL until its content differs from the hash recorded by the previous
-// run.
-//
-// Vite (and most modern bundlers) content-hash every asset filename, so the
-// served index.html changes on every build -- poll until it differs from the
-// baseline instead of guessing a fixed delay.
-//
-// The baseline is whatever this URL last served as of the previous run. A
-// baseline captured now would be wrong whenever the deploy beat the runner to
-// it: the "before" picture would already be the new page, and the poll would
-// time out on a deploy that had in fact gone live.
+/**
+ * Polls a URL until its content differs from the hash recorded by the previous
+ * run.
+ *
+ * Vite (and most modern bundlers) content-hash every asset filename, so the
+ * served index.html changes on every build -- poll until it differs from the
+ * baseline instead of guessing a fixed delay.
+ *
+ * The baseline is whatever this URL last served as of the previous run. A
+ * baseline captured now would be wrong whenever the deploy beat the runner to
+ * it: the "before" picture would already be the new page, and the poll would
+ * time out on a deploy that had in fact gone live.
+ */
 
 import * as cache from '@actions/cache';
 import * as core from '@actions/core';
