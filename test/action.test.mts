@@ -23,6 +23,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ACTION = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
+// Loopback rather than localhost: it can't resolve to IPv6 on some machines
+// while the server listens on IPv4, and it keeps the tests off the network.
+const HOST = '127.0.0.1';
 const sha256 = (body: string): string =>
   createHash('sha256').update(Buffer.from(body)).digest('hex');
 
@@ -64,11 +67,12 @@ const startServer = async ({
     res.writeHead(status, { 'Content-Type': 'text/html' });
     res.end(current);
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, HOST, resolve));
   const { port } = server.address() as AddressInfo;
+  const origin = `http://${HOST}:${port}`;
   return {
-    url: `http://127.0.0.1:${port}/`,
-    redirectUrl: `http://127.0.0.1:${port}/redirect`,
+    url: `${origin}/`,
+    redirectUrl: `${origin}/redirect`,
     get requests() {
       return requests;
     },
@@ -292,7 +296,8 @@ test('redirects are followed instead of hashing an empty redirect body', async (
 });
 
 test('an unreachable url with no recorded hash fails the step', async () => {
-  const run = await runAction({ url: 'http://127.0.0.1:1/nothing' });
+  // Port 1 is reserved and never listening, so the connection fails outright.
+  const run = await runAction({ url: `http://${HOST}:1/nothing` });
   assert.equal(run.code, 1);
   assert.ok(run.annotations.some((a) => a.startsWith('::error::Failed to compute a checksum')));
 });
