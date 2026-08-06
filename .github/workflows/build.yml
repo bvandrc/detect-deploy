@@ -1,0 +1,51 @@
+name: Build dist
+
+# dist/ is committed because a JS action runs the checked-in file, not the
+# source. Rebuilding here means a stale bundle can't ship just because someone
+# forgot to run the build locally.
+on:
+  push:
+    paths:
+      - src/**
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - .github/workflows/build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the branch itself rather than the detached commit, so the
+      # rebuilt bundle has somewhere to land.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      # A push authenticated with GITHUB_TOKEN does not start another workflow
+      # run, so committing here cannot loop back into this job.
+      - name: Commit dist if it changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- dist; then
+            echo "dist is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git commit -m "build: rebuild dist"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -34,60 +34,7 @@ outputs:
     description: >
       "true" if a new deploy was detected before max-attempts was reached,
       "false" otherwise.
-    value: ${{ steps.poll.outputs.deployed }}
 
 runs:
-  using: composite
-  steps:
-    # Cache keys are immutable, so every run writes a new key and reads back the
-    # most recent one matching the prefix. The job is part of the key so two jobs
-    # polling the same url in one run don't collide on it; it is not part of the
-    # prefix, so they still read each other's hashes.
-    # The url is processed rather than used directly because cache keys treat commas as separators.
-    - name: Derive cache key
-      id: key
-      shell: bash
-      env:
-        URL: ${{ inputs.url }}
-      run: |
-        set -euo pipefail
-        
-        URL_ID=$(printf '%s' "$URL" | sha256sum | cut -c1-32)
-
-        PREFIX="poll-for-deploy-v1-$URL_ID-"
-
-        echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
-        echo "key=$PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB" >> "$GITHUB_OUTPUT"
-
-    # restore-keys is what actually finds the hash: `key` contains this run's id,
-    # so nothing has ever been saved under it and the exact-match lookup is
-    # expected to miss. It then falls back to the prefix, which matches every
-    # entry recorded for this url and returns the most recent -- the hash the
-    # previous run left behind. `key` is required by the action, and passing the
-    # save key here is the idiom for "miss, then fall through to the prefix".
-    - name: Restore recorded hash
-      uses: actions/cache/restore@v4
-      with:
-        path: ${{ runner.temp }}/poll-for-deploy
-        key: ${{ steps.key.outputs.key }}
-        restore-keys: ${{ steps.key.outputs.prefix }}
-
-    - name: Wait for new deploy
-      id: poll
-      shell: bash
-      env:
-        POLL_URL: ${{ inputs.url }}
-        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
-        INTERVAL: ${{ inputs.interval-seconds }}
-        ASSUME_DEPLOYED_ON_FIRST_RUN: ${{ inputs.assume-deployed-on-first-run }}
-        STATE_DIR: ${{ runner.temp }}/poll-for-deploy
-      run: node "$GITHUB_ACTION_PATH/poll.mjs"
-
-    # Runs even when the poll timed out, so the recorded hash stays fresh
-    # against the cache's eviction window.
-    - name: Record hash for the next run
-      if: always() && steps.poll.outputs.hash != ''
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.temp }}/poll-for-deploy
-        key: ${{ steps.key.outputs.key }}
+  using: node24
+  main: dist/index.js

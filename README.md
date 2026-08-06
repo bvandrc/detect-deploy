@@ -1,7 +1,7 @@
 # poll-for-deploy
 
-A composite GitHub Action that polls a URL until its content changes from the
-last hash it recorded, to detect when a new deploy has gone live.
+A GitHub Action that polls a URL until its content changes from the last hash
+it recorded, to detect when a new deploy has gone live.
 
 This is useful when your host's deploys are decoupled from the git push that
 triggers CI, so a workflow can't assume a new build is live the moment CI
@@ -112,3 +112,17 @@ log prints the baseline and every observed hash if you need to debug a poll.
   after this action reports `deployed`.
 - Failed requests count as "unchanged", so a briefly-down site times out instead
   of reporting a false positive. Redirects are followed.
+
+## Development
+
+The action source is `src/index.ts`. Because a JavaScript action runs the
+checked-in file rather than the source, the bundle at `dist/index.js` is
+committed and must be rebuilt whenever `src/` changes:
+
+```sh
+npm ci
+npm run all   # typecheck, then bundle with ncc
+```
+
+Pushing without rebuilding is safe — the `Build dist` workflow rebuilds and
+commits the bundle if it differs from what you pushed.

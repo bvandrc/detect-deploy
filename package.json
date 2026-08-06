@@ -1,0 +1,20 @@
+{
+  "name": "poll-for-deploy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --minify",
+    "typecheck": "tsc --noEmit",
+    "all": "npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@actions/cache": "^6.2.0",
+    "@actions/core": "^1.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vercel/ncc": "^0.38.4",
+    "typescript": "^5.6.0"
+  }
+}
