@@ -82,7 +82,6 @@ jobs:
         uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
-          assume-deployed-on-first-run: true
 
       - name: Trigger Separate Workflow
         if: steps.detect.outputs.deployed == 'true'
@@ -145,7 +144,7 @@ activity for 60 days — past that the cron stops and the entry ages out anyway.
 | `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
 | `max-attempts`     | Maximum number of polling attempts before giving up.                                                                                                    | No       | `45`    |
 | `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
-| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped.                  | No       | `false` |
+| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped.                  | No       | `true`  |
 
 ## Outputs
 
@@ -159,13 +158,20 @@ log prints the baseline and every observed hash if you need to debug a poll.
 ## Notes
 
 - **The first run has nothing to compare against**, so the answer is genuinely
-  unknown. By default it baselines against the page as it looks then and polls,
-  which can miss a deploy that already went live; set
-  `assume-deployed-on-first-run` to report `true` at once instead, so dependent
-  steps run rather than being skipped — against a page that may still be the
-  old build. Either way the hash is recorded, so later runs are exact. This also
-  applies after an entry is evicted; see [keeping the baseline
-  warm](#keeping-the-baseline-warm).
+  unknown. By default it resolves that as `true` and reports a deploy without
+  polling, so dependent steps run rather than being skipped — against a page
+  that may still be the old build. Set `assume-deployed-on-first-run: false` to
+  baseline against the page as it looks then and poll instead, which reports
+  honestly but misses a deploy that had already gone live. Either way the hash
+  is recorded, so later runs are exact.
+
+  **This applies after every cache eviction, not just the first run ever.**
+  GitHub evicts entries unread for 7 days, so on the default a repository that
+  deploys less often than weekly reports `deployed=true` on its first run back,
+  every time, without checking anything. If your deploys can be more than a week
+  apart, either keep the entry alive (see [keeping the baseline
+  warm](#keeping-the-baseline-warm)) or set the input to `false` and accept the
+  opposite error.
 - **One baseline per URL, per branch.** Actions caches are scoped to a branch,
   with the default branch's readable from all of them, so a pull request branch
   reads `main`'s hash but writes its own.

@@ -25,11 +25,12 @@ inputs:
       Report deployed=true without polling when no hash has been recorded yet
       -- the first run, or the first after a cache entry is evicted -- so
       dependent steps run instead of being skipped. They may run against the
-      old build, since nothing proves the deploy has landed. Left false, the
-      run baselines against the page as it looks now and polls as usual, which
-      catches a deploy that lands during the window but not one already live.
+      old build, since nothing proves the deploy has landed. Set false to
+      baseline against the page as it looks now and poll as usual, which
+      catches a deploy that lands during the window but not one already live,
+      and reports deployed=false if neither happens.
     required: false
-    default: "false"
+    default: "true"
 
 outputs:
   deployed:

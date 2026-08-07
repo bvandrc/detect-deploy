@@ -118,7 +118,9 @@ const runAction = async ({
   url,
   maxAttempts = 3,
   interval = 0,
-  assumeDeployed = false,
+  // Mirrors action.yml's default, which the runner -- not the action -- is
+  // what applies. The test below pins the two together.
+  assumeDeployed = true,
   recordedHash = null,
 }: {
   /** Omitted entirely when undefined, to exercise the missing-input path. */
@@ -187,9 +189,28 @@ const runAction = async ({
   }
 }
 
+// The runner reads action.yml and passes the result in as INPUT_*; the action
+// never sees the default itself. So runAction hardcodes a stand-in, and this
+// keeps that stand-in honest -- otherwise every test above could be exercising
+// a default the action doesn't actually ship.
+test('the harness default matches the one declared in action.yml', () => {
+  const actionYml = fs.readFileSync(
+    path.join(import.meta.dirname, '..', 'action.yml'),
+    'utf8',
+  )
+  const declared = actionYml
+    .split('assume-deployed-on-first-run:')[1]
+    ?.match(/^\s+default: "(true|false)"$/m)?.[1]
+  assert.equal(
+    declared,
+    'true',
+    'action.yml default changed; update runAction and the tests that rely on it',
+  )
+})
+
 test('first run baselines against the live page and records its hash', async () => {
   const server = await startTestServer({ body: '<html>a</html>' })
-  const run = await runAction({ url: server.url })
+  const run = await runAction({ url: server.url, assumeDeployed: false })
   assert.equal(run.outputs.deployed, 'false')
   assert.equal(run.recorded, sha256('<html>a</html>'))
   assert.match(run.stdout, /No hash recorded/)
@@ -237,7 +258,11 @@ test('a deploy landing mid-poll is detected on the attempt it appears', async ()
 test('the baseline and the poll hash identically, so nothing reports a false change', async () => {
   // Would fail if the two were ever computed by different code paths.
   const server = await startTestServer({ body: '<html>stable</html>' })
-  const run = await runAction({ url: server.url, maxAttempts: 2 })
+  const run = await runAction({
+    url: server.url,
+    maxAttempts: 2,
+    assumeDeployed: false,
+  })
   assert.equal(run.outputs.deployed, 'false')
   assert.doesNotMatch(run.stdout, /Attempt \d+\/\d+: new deploy detected/)
 })
@@ -247,6 +272,7 @@ test('a malformed recorded hash is discarded rather than used as a baseline', as
   const run = await runAction({
     url: server.url,
     recordedHash: 'not-a-digest',
+    assumeDeployed: false,
   })
   assert.ok(
     run.annotations.some((a) =>
