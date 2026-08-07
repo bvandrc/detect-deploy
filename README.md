@@ -2,7 +2,7 @@
 
 A GitHub Action that polls a URL until its content changes from the last hash it recorded, to detect when a new deploy has gone live.
 
-The step blocks while it polls — up to `max-attempts × interval-seconds`, 15 minutes at the defaults — so give the job a `timeout-minutes` above that.
+The step blocks while it polls — `max-seconds`, 15 minutes by default — so give the job a `timeout-minutes` above that.
 
 This is useful when your host's deploys are decoupled from the git push that triggers CI, so a workflow can't assume a new build is live the moment CI starts. It polls instead of guessing a fixed sleep duration.
 
@@ -90,7 +90,7 @@ jobs:
       - uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
-          max-attempts: "1"
+          max-seconds: "0" # one request, no polling
 ```
 
 One request, no waiting, and its `deployed` output is meant to be ignored. Run it on your default branch — those caches are readable from every branch, so a single job keeps every branch's lookups alive.
@@ -102,7 +102,7 @@ Two things to know: if the page did change since the last run, this records the 
 | Name               | Description                                                                                                                                            | Required | Default |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- |
 | `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
-| `max-attempts`     | Maximum number of polling attempts before giving up.                                                                                                    | No       | `45`    |
+| `max-seconds`      | How long to keep polling before giving up. `0` makes one request and returns.                                                                           | No       | `900`   |
 | `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
 | `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped.                  | No       | `true`  |
 
@@ -110,7 +110,7 @@ Two things to know: if the page did change since the last run, this records the 
 
 | Name       | Description                                                                 |
 | ---------- | --------------------------------------------------------------------------- |
-| `deployed` | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.  |
+| `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`.   |
 
 The hashes themselves are an implementation detail and aren't exposed; the run log prints the baseline and every observed hash if you need to debug a poll.
 
@@ -122,6 +122,7 @@ The hashes themselves are an implementation detail and aren't exposed; the run l
 - **One baseline per URL, per branch.** Actions caches are scoped to a branch, with the default branch's readable from all of them, so a pull request branch reads `main`'s hash but writes its own.
 - **This detects change, not authorship.** If something else updates the page between runs, the next run attributes that change to itself. For strict attribution, serve a build marker (a commit SHA in the HTML) and assert on it after this action reports `deployed`.
 - Failed requests count as "unchanged", so a briefly-down site times out instead of reporting a false positive. Redirects are followed.
+- **`max-seconds` bounds when polling stops, not when the step does.** A request already in flight is allowed to finish, so a run can overrun by up to the 30-second request timeout. Leave a minute of headroom in `timeout-minutes` rather than setting it to exactly `max-seconds`.
 
 ## Development
 

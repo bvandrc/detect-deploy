@@ -87785,7 +87785,7 @@ var getIntegerInput = (name) => {
 var sleep2 = (seconds) => new Promise((resolve2) => setTimeout(resolve2, seconds * 1e3));
 var main = async () => {
   const targetUrl = (0, import_core5.getInput)("url", { required: true });
-  const maxAttempts = getIntegerInput("max-attempts");
+  const maxSeconds = getIntegerInput("max-seconds");
   const interval = getIntegerInput("interval-seconds");
   const assumeDeployedOnFirstRun = (0, import_core5.getBooleanInput)(
     "assume-deployed-on-first-run"
@@ -87858,8 +87858,9 @@ var main = async () => {
       }
     }
     (0, import_core5.info)(`Baseline (${source}): ${baseline}`);
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const label = `Attempt ${attempt}/${maxAttempts}`;
+    const deadline = Date.now() + maxSeconds * 1e3;
+    for (let attempt = 1; ; attempt++) {
+      const label = `Attempt ${attempt}`;
       let current = null;
       try {
         current = await fetchHash();
@@ -87873,9 +87874,10 @@ var main = async () => {
         return;
       }
       if (current) (0, import_core5.info)(`${label}: unchanged.`);
-      if (attempt < maxAttempts) await sleep2(interval);
+      if (Date.now() + interval * 1e3 >= deadline) break;
+      await sleep2(interval);
     }
-    (0, import_core5.info)(`No new deploy detected after ${maxAttempts * interval} seconds.`);
+    (0, import_core5.info)(`No new deploy detected within ${maxSeconds} seconds.`);
     record(baseline);
     (0, import_core5.setOutput)("deployed", "false");
   } finally {

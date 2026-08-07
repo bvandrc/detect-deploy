@@ -45,10 +45,10 @@ const sleep = (seconds: number): Promise<void> =>
 // Everything runs inside one scope so that a bad input is thrown where the
 // handler below can turn it into a single annotation. Left at module level it
 // would escape as an uncaught exception and print a stack trace through the
-// bundle, which buries a plain "max-attempts must be an integer" in noise.
+// bundle, which buries a plain "max-seconds must be an integer" in noise.
 const main = async (): Promise<void> => {
   const targetUrl = getInput('url', { required: true })
-  const maxAttempts = getIntegerInput('max-attempts')
+  const maxSeconds = getIntegerInput('max-seconds')
   const interval = getIntegerInput('interval-seconds')
   const assumeDeployedOnFirstRun = getBooleanInput(
     'assume-deployed-on-first-run',
@@ -164,8 +164,14 @@ const main = async (): Promise<void> => {
 
     info(`Baseline (${source}): ${baseline}`)
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const label = `Attempt ${attempt}/${maxAttempts}`
+    // A wall-clock budget rather than an attempt count: each iteration costs
+    // the request plus the interval, so a fixed number of attempts would run
+    // for a length nobody can predict -- and the job's timeout-minutes has to
+    // be set against something knowable.
+    const deadline = Date.now() + maxSeconds * 1000
+
+    for (let attempt = 1; ; attempt++) {
+      const label = `Attempt ${attempt}`
       let current: string | null = null
       try {
         current = await fetchHash()
@@ -180,10 +186,16 @@ const main = async (): Promise<void> => {
         return
       }
       if (current) info(`${label}: unchanged.`)
-      if (attempt < maxAttempts) await sleep(interval)
+
+      // Checked after the attempt, so the budget bounds the polling without
+      // costing the one check that a zero budget should still get. Sleeping
+      // only when another attempt fits keeps the run from idling past the
+      // deadline just to exit.
+      if (Date.now() + interval * 1000 >= deadline) break
+      await sleep(interval)
     }
 
-    info(`No new deploy detected after ${maxAttempts * interval} seconds.`)
+    info(`No new deploy detected within ${maxSeconds} seconds.`)
     record(baseline)
     setOutput('deployed', 'false')
   } finally {

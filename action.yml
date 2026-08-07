@@ -12,10 +12,14 @@ inputs:
   url:
     description: The URL to poll.
     required: true
-  max-attempts:
-    description: Maximum number of polling attempts before giving up.
+  max-seconds:
+    description: |
+      How long to keep polling before giving up. Set the job's timeout-minutes
+      above this. 0 makes one request and returns without waiting.
+      A request already in flight when the budget runs out is allowed to
+      finish, so a run can overrun by up to the 30s request timeout.
     required: false
-    default: "45"
+    default: "900"
   interval-seconds:
     description: Seconds to wait between polling attempts.
     required: false
@@ -37,8 +41,8 @@ inputs:
 outputs:
   deployed:
     description: >
-      "true" if a new deploy was detected before max-attempts was reached,
-      "false" otherwise.
+      "true" if a new deploy was detected within max-seconds, "false"
+      otherwise.
 
 runs:
   using: node24
