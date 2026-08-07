@@ -164,8 +164,6 @@ const main = async (): Promise<void> => {
 
     info(`Baseline (${source}): ${baseline}`)
 
-    // A wall-clock budget, so the window stays a number the job's
-    // timeout-minutes can be set against however long each request takes.
     const deadline = Date.now() + maxSeconds * 1000
 
     for (let attempt = 1; ; attempt++) {

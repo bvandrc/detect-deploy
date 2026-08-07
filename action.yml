@@ -15,10 +15,8 @@ inputs:
   max-seconds:
     description: |
       How long to keep polling before giving up.
-        - Set the job's timeout-minutes above this.
+        - NOTE: set the job's timeout-minutes above this.
         - 0 makes one request and returns without waiting.
-        - A request already in flight when the budget runs out is allowed to
-          finish, so a run can overrun by up to the 30s request timeout.
     required: false
     default: "900" # 15 minutes
   interval-seconds:
