@@ -73,25 +73,22 @@ permissions:
 
 jobs:
   detect-deploy:
-    name: Detect deploy
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Detect deploy
+      - name: Detect Deploy
         id: detect
         uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
-          interval-seconds: 20
-          max-attempts: 15 # 15 × 20s = 5 minutes
           assume-deployed-on-first-run: true
 
-      - name: Trigger Lighthouse
+      - name: Trigger Separate Workflow
         if: steps.detect.outputs.deployed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run lighthouse.yml --ref main --repo ${{ github.repository }}
+        run: gh workflow run separate-workflow.yml --ref main --repo ${{ github.repository }}
 ```
 
 Two things that will bite you here:
