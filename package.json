@@ -1,10 +1,10 @@
 {
-  "name": "wait-for-deploy",
+  "name": "detect-deploy",
   "version": "1.0.0",
   "private": true,
   "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --minify",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js",
     "ts:check": "tsc --noEmit",
     "all": "npm run format && npm run ts:check && npm run build && npm test",
     "test": "node --experimental-strip-types --test test/*.test.mts",

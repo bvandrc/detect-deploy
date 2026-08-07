@@ -116,14 +116,14 @@ const parseOutputs = (text: string): Record<string, string> => {
 
 const runAction = async ({
   url,
-  maxAttempts = 3,
+  maxSeconds = 0,
   interval = 0,
-  assumeDeployed = false,
+  assumeDeployed = true,
   recordedHash = null,
 }: {
   /** Omitted entirely when undefined, to exercise the missing-input path. */
   url?: string | undefined
-  maxAttempts?: number | string
+  maxSeconds?: number | string
   interval?: number | string
   assumeDeployed?: boolean | string
   recordedHash?: string | null
@@ -136,11 +136,11 @@ const runAction = async ({
   recorded: string | null
   annotations: string[]
 }> => {
-  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'wait-test-'))
+  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-test-'))
   const outputFile = path.join(runnerTemp, 'github-output')
   fs.writeFileSync(outputFile, '')
 
-  const stateDir = path.join(runnerTemp, 'wait-for-deploy')
+  const stateDir = path.join(runnerTemp, 'detect-deploy')
   const stateFile = path.join(stateDir, 'hash')
   if (recordedHash !== null) {
     fs.mkdirSync(stateDir, { recursive: true })
@@ -154,7 +154,7 @@ const runAction = async ({
     GITHUB_RUN_ID: '1',
     GITHUB_RUN_ATTEMPT: '1',
     GITHUB_JOB: 'test',
-    'INPUT_MAX-ATTEMPTS': String(maxAttempts),
+    'INPUT_MAX-SECONDS': String(maxSeconds),
     'INPUT_INTERVAL-SECONDS': String(interval),
     'INPUT_ASSUME-DEPLOYED-ON-FIRST-RUN': String(assumeDeployed),
   }
@@ -187,9 +187,28 @@ const runAction = async ({
   }
 }
 
+// The runner reads action.yml and passes the result in as INPUT_*; the action
+// never sees the default itself. So runAction hardcodes a stand-in, and this
+// keeps that stand-in honest -- otherwise every test above could be exercising
+// a default the action doesn't actually ship.
+test('the harness default matches the one declared in action.yml', () => {
+  const actionYml = fs.readFileSync(
+    path.join(import.meta.dirname, '..', 'action.yml'),
+    'utf8',
+  )
+  const declared = actionYml
+    .split('assume-deployed-on-first-run:')[1]
+    ?.match(/^\s+default: "(true|false)"$/m)?.[1]
+  assert.equal(
+    declared,
+    'true',
+    'action.yml default changed; update runAction and the tests that rely on it',
+  )
+})
+
 test('first run baselines against the live page and records its hash', async () => {
   const server = await startTestServer({ body: '<html>a</html>' })
-  const run = await runAction({ url: server.url })
+  const run = await runAction({ url: server.url, assumeDeployed: false })
   assert.equal(run.outputs.deployed, 'false')
   assert.equal(run.recorded, sha256('<html>a</html>'))
   assert.match(run.stdout, /No hash recorded/)
@@ -204,19 +223,38 @@ test('a deploy that landed before the run started is detected on attempt 1', asy
   })
   assert.equal(run.outputs.deployed, 'true')
   assert.match(run.stdout, /Baseline \(cache\)/)
-  assert.match(run.stdout, /Attempt 1\/3: new deploy detected/)
+  assert.match(run.stdout, /Attempt 1: new deploy detected/)
   assert.equal(run.recorded, sha256('<html>new</html>'))
 })
 
-test('an unchanged page polls to exhaustion and reports false', async () => {
+test('a zero budget makes exactly one request and does not wait', async () => {
   const server = await startTestServer({ body: '<html>same</html>' })
   const run = await runAction({
     url: server.url,
+    maxSeconds: 0,
+    interval: 60,
     recordedHash: sha256('<html>same</html>'),
   })
   assert.equal(run.outputs.deployed, 'false')
-  assert.equal(server.requests, 3, 'should poll exactly max-attempts times')
-  assert.match(run.stdout, /No new deploy detected/)
+  assert.equal(server.requests, 1, 'should not poll past a spent budget')
+  assert.match(run.stdout, /No new deploy detected within 0 seconds/)
+})
+
+// Real seconds, because the whole point of the budget is wall-clock: with an
+// interval of 0 the attempt count would just track how fast the loop spins.
+test('polling stops once the budget is spent, rather than at a fixed count', async () => {
+  const server = await startTestServer({ body: '<html>same</html>' })
+  const run = await runAction({
+    url: server.url,
+    maxSeconds: 2,
+    interval: 1,
+    recordedHash: sha256('<html>same</html>'),
+  })
+  assert.equal(run.outputs.deployed, 'false')
+  // t=0 and t=1; a third would start at t=2, which is not inside the budget.
+  assert.equal(server.requests, 2)
+  assert.match(run.stdout, /Polling for up to 2s, every 1s\./)
+  assert.match(run.stdout, /No new deploy detected within 2 seconds/)
 })
 
 test('a deploy landing mid-poll is detected on the attempt it appears', async () => {
@@ -227,19 +265,25 @@ test('a deploy landing mid-poll is detected on the attempt it appears', async ()
   })
   const run = await runAction({
     url: server.url,
-    maxAttempts: 6,
+    maxSeconds: 10,
+    interval: 1,
     recordedHash: sha256('<html>old</html>'),
   })
   assert.equal(run.outputs.deployed, 'true')
-  assert.match(run.stdout, /Attempt 3\/6: new deploy detected/)
+  assert.match(run.stdout, /Attempt 3: new deploy detected/)
 })
 
 test('the baseline and the poll hash identically, so nothing reports a false change', async () => {
   // Would fail if the two were ever computed by different code paths.
   const server = await startTestServer({ body: '<html>stable</html>' })
-  const run = await runAction({ url: server.url, maxAttempts: 2 })
+  const run = await runAction({
+    url: server.url,
+    maxSeconds: 1,
+    interval: 1,
+    assumeDeployed: false,
+  })
   assert.equal(run.outputs.deployed, 'false')
-  assert.doesNotMatch(run.stdout, /Attempt \d+\/\d+: new deploy detected/)
+  assert.doesNotMatch(run.stdout, /Attempt \d+: new deploy detected/)
 })
 
 test('a malformed recorded hash is discarded rather than used as a baseline', async () => {
@@ -247,6 +291,7 @@ test('a malformed recorded hash is discarded rather than used as a baseline', as
   const run = await runAction({
     url: server.url,
     recordedHash: 'not-a-digest',
+    assumeDeployed: false,
   })
   assert.ok(
     run.annotations.some((a) =>
@@ -278,7 +323,7 @@ test('assume-deployed-on-first-run does not short-circuit once a hash exists', a
     recordedHash: sha256('<html>same</html>'),
   })
   assert.equal(run.outputs.deployed, 'false')
-  assert.match(run.stdout, /Attempt 1\/3/)
+  assert.match(run.stdout, /Attempt 1/)
 })
 
 test('failed requests count as unchanged rather than as a deploy', async () => {
@@ -312,12 +357,12 @@ test('an unreachable url with no recorded hash fails the step', async () => {
   )
 })
 
-test('a bad max-attempts fails with one annotation, not an unhandled stack', async () => {
+test('a bad max-seconds fails with one annotation, not an unhandled stack', async () => {
   const server = await startTestServer({ body: 'x' })
-  const run = await runAction({ url: server.url, maxAttempts: 'abc' })
+  const run = await runAction({ url: server.url, maxSeconds: 'abc' })
   assert.equal(run.code, 1)
   assert.deepEqual(run.annotations, [
-    "::error::max-attempts must be a non-negative integer, got 'abc'.",
+    "::error::max-seconds must be a non-negative integer, got 'abc'.",
   ])
 })
 

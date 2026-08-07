@@ -43,19 +43,19 @@ const sleep = (seconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, seconds * 1000))
 
 // Everything runs inside one scope so that a bad input is thrown where the
-// handler below can turn it into an annotation. Left at module level it would
-// escape as an uncaught exception, and node would print the offending source
-// line -- which, in a minified bundle, is the entire file.
+// handler below can turn it into a single annotation. Left at module level it
+// would escape as an uncaught exception and print a stack trace through the
+// bundle, which buries a plain "max-seconds must be an integer" in noise.
 const main = async (): Promise<void> => {
   const targetUrl = getInput('url', { required: true })
-  const maxAttempts = getIntegerInput('max-attempts')
+  const maxSeconds = getIntegerInput('max-seconds')
   const interval = getIntegerInput('interval-seconds')
   const assumeDeployedOnFirstRun = getBooleanInput(
     'assume-deployed-on-first-run',
   )
 
   // A directory, because the cache API caches paths rather than values.
-  const stateDir = join(process.env.RUNNER_TEMP ?? tmpdir(), 'wait-for-deploy')
+  const stateDir = join(process.env.RUNNER_TEMP ?? tmpdir(), 'detect-deploy')
   const stateFile = join(stateDir, 'hash')
 
   // Cache entries are immutable, so every run writes a new key and reads back
@@ -68,7 +68,7 @@ const main = async (): Promise<void> => {
     .update(targetUrl)
     .digest('hex')
     .slice(0, 32)
-  const cachePrefix = `wait-for-deploy-v1-${urlId}-`
+  const cachePrefix = `detect-deploy-v1-${urlId}-`
   const cacheKey =
     cachePrefix +
     [
@@ -163,9 +163,12 @@ const main = async (): Promise<void> => {
     }
 
     info(`Baseline (${source}): ${baseline}`)
+    info(`Polling for up to ${maxSeconds}s, every ${interval}s.`)
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const label = `Attempt ${attempt}/${maxAttempts}`
+    const deadline = Date.now() + maxSeconds * 1000
+
+    for (let attempt = 1; ; attempt++) {
+      const label = `Attempt ${attempt}`
       let current: string | null = null
       try {
         current = await fetchHash()
@@ -180,10 +183,12 @@ const main = async (): Promise<void> => {
         return
       }
       if (current) info(`${label}: unchanged.`)
-      if (attempt < maxAttempts) await sleep(interval)
+
+      if (Date.now() + interval * 1000 >= deadline) break
+      await sleep(interval)
     }
 
-    info(`No new deploy detected after ${maxAttempts * interval} seconds.`)
+    info(`No new deploy detected within ${maxSeconds} seconds.`)
     record(baseline)
     setOutput('deployed', 'false')
   } finally {
