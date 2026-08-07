@@ -164,10 +164,8 @@ const main = async (): Promise<void> => {
 
     info(`Baseline (${source}): ${baseline}`)
 
-    // A wall-clock budget rather than an attempt count: each iteration costs
-    // the request plus the interval, so a fixed number of attempts would run
-    // for a length nobody can predict -- and the job's timeout-minutes has to
-    // be set against something knowable.
+    // A wall-clock budget, so the window stays a number the job's
+    // timeout-minutes can be set against however long each request takes.
     const deadline = Date.now() + maxSeconds * 1000
 
     for (let attempt = 1; ; attempt++) {
@@ -187,10 +185,6 @@ const main = async (): Promise<void> => {
       }
       if (current) info(`${label}: unchanged.`)
 
-      // Checked after the attempt, so the budget bounds the polling without
-      // costing the one check that a zero budget should still get. Sleeping
-      // only when another attempt fits keeps the run from idling past the
-      // deadline just to exit.
       if (Date.now() + interval * 1000 >= deadline) break
       await sleep(interval)
     }
