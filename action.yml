@@ -15,7 +15,7 @@ inputs:
   max-seconds:
     description: |
       How long to keep polling before giving up.
-        - NOTE: set the job's timeout-minutes above this.
+        - NOTE: Set the job's timeout-minutes above this!
         - 0 makes one request and returns without waiting.
     required: false
     default: "900" # 15 minutes
