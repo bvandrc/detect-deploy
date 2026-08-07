@@ -253,6 +253,7 @@ test('polling stops once the budget is spent, rather than at a fixed count', asy
   assert.equal(run.outputs.deployed, 'false')
   // t=0 and t=1; a third would start at t=2, which is not inside the budget.
   assert.equal(server.requests, 2)
+  assert.match(run.stdout, /Polling for up to 2s, every 1s\./)
   assert.match(run.stdout, /No new deploy detected within 2 seconds/)
 })
 

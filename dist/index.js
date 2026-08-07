@@ -87858,6 +87858,7 @@ var main = async () => {
       }
     }
     (0, import_core5.info)(`Baseline (${source}): ${baseline}`);
+    (0, import_core5.info)(`Polling for up to ${maxSeconds}s, every ${interval}s.`);
     const deadline = Date.now() + maxSeconds * 1e3;
     for (let attempt = 1; ; attempt++) {
       const label = `Attempt ${attempt}`;

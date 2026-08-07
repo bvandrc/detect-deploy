@@ -163,6 +163,7 @@ const main = async (): Promise<void> => {
     }
 
     info(`Baseline (${source}): ${baseline}`)
+    info(`Polling for up to ${maxSeconds}s, every ${interval}s.`)
 
     const deadline = Date.now() + maxSeconds * 1000
 
