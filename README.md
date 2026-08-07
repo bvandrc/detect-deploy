@@ -64,13 +64,42 @@ jobs:
       - run: echo "run your post-deploy checks here"
 ```
 
-Three things that will bite you here:
+The dispatch and the cross-job gate both have sharp edges — see [Caveats](#caveats).
+
+## Inputs
+
+| Name               | Description                                                                                                                                            | Required | Default |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- |
+| `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
+| `max-seconds`      | How long to keep polling before giving up. `0` makes one request and returns.                                                                           | No       | `900`   |
+| `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
+| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped.                  | No       | `true`  |
+
+## Outputs
+
+| Name       | Description                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`.   |
+
+The hashes themselves are an implementation detail and aren't exposed; the run log prints the baseline and every observed hash if you need to debug a poll.
+
+## Caveats
+
+- **The first run has nothing to compare against**, so the answer is genuinely unknown. By default it resolves that as `true` and reports a deploy without polling, so dependent steps run rather than being skipped — against a page that may still be the old build. Set `assume-deployed-on-first-run: false` to baseline against the page as it looks then and poll instead, which reports honestly but misses a deploy that had already gone live. Either way the hash is recorded, so later runs are exact.
+
+  **This applies after every cache eviction, not just the first run ever.** GitHub evicts entries unread for 7 days, so on the default a repository that deploys less often than weekly reports `deployed=true` on its first run back, every time, without checking anything. If your deploys can be more than a week apart, either keep the entry alive (see [keeping the baseline warm](#keeping-the-baseline-warm)) or set the input to `false` and accept the opposite error.
+- **One baseline per URL, per branch.** Actions caches are scoped to a branch, with the default branch's readable from all of them, so a pull request branch reads `main`'s hash but writes its own.
+- **This detects change, not authorship.** If something else updates the page between runs, the next run attributes that change to itself. For strict attribution, serve a build marker (a commit SHA in the HTML) and assert on it after this action reports `deployed`.
+- **Failed requests count as "unchanged"**, so a briefly-down site times out instead of reporting a false positive. Redirects are followed.
+- **`max-seconds` bounds when polling stops, not when the step does.** A request already in flight is allowed to finish, so a run can overrun by up to the 30-second request timeout. Leave a minute of headroom in `timeout-minutes` rather than setting it to exactly `max-seconds`.
+
+These last three are about the wiring in the [usage example](#usage) rather than the action itself:
 
 - **`actions: write` is necessary but not sufficient.** Workflow dispatch is one of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository must also permit it: Settings → Actions → General → Workflow permissions must be "Read and write". Without it the `gh workflow run` step 403s.
 - **The dispatched run starts from `--ref main`, not from the commit that was deployed.** If pushes land faster than the poll finishes, the target runs against whatever `main` points at then. That's usually what you want for a production audit — it matches what's actually live — but it does mean the run isn't pinned to the pushed commit.
-- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed` is readable only inside `detect-deploy`; another job needs the `outputs:` mapping above and reads it as `needs.detect-deploy.outputs.deployed`. Drop the mapping and the gate silently evaluates to empty, so the job never runs.
+- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed` is readable only inside `detect-deploy`; another job needs the `outputs:` mapping and reads it as `needs.detect-deploy.outputs.deployed`. Drop the mapping and the gate silently evaluates to empty, so the job never runs.
 
-## Keeping the baseline warm
+### Keeping the baseline warm
 
 The recorded hash lives in the Actions cache, and GitHub evicts entries that have gone 7 days without a read. If more than a week can pass between deploys, the entry is gone by the next one and that run starts over with no baseline.
 
@@ -96,33 +125,6 @@ jobs:
 One request, no waiting, and its `deployed` output is meant to be ignored. Run it on your default branch — those caches are readable from every branch, so a single job keeps every branch's lookups alive.
 
 Two things to know: if the page did change since the last run, this records the new hash, so the next real deploy compares against it rather than reporting a change twice. And GitHub disables scheduled workflows in a repository with no activity for 60 days — past that the cron stops and the entry ages out anyway.
-
-## Inputs
-
-| Name               | Description                                                                                                                                            | Required | Default |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- |
-| `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
-| `max-seconds`      | How long to keep polling before giving up. `0` makes one request and returns.                                                                           | No       | `900`   |
-| `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
-| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped.                  | No       | `true`  |
-
-## Outputs
-
-| Name       | Description                                                                 |
-| ---------- | --------------------------------------------------------------------------- |
-| `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`.   |
-
-The hashes themselves are an implementation detail and aren't exposed; the run log prints the baseline and every observed hash if you need to debug a poll.
-
-## Notes
-
-- **The first run has nothing to compare against**, so the answer is genuinely unknown. By default it resolves that as `true` and reports a deploy without polling, so dependent steps run rather than being skipped — against a page that may still be the old build. Set `assume-deployed-on-first-run: false` to baseline against the page as it looks then and poll instead, which reports honestly but misses a deploy that had already gone live. Either way the hash is recorded, so later runs are exact.
-
-  **This applies after every cache eviction, not just the first run ever.** GitHub evicts entries unread for 7 days, so on the default a repository that deploys less often than weekly reports `deployed=true` on its first run back, every time, without checking anything. If your deploys can be more than a week apart, either keep the entry alive (see [keeping the baseline warm](#keeping-the-baseline-warm)) or set the input to `false` and accept the opposite error.
-- **One baseline per URL, per branch.** Actions caches are scoped to a branch, with the default branch's readable from all of them, so a pull request branch reads `main`'s hash but writes its own.
-- **This detects change, not authorship.** If something else updates the page between runs, the next run attributes that change to itself. For strict attribution, serve a build marker (a commit SHA in the HTML) and assert on it after this action reports `deployed`.
-- Failed requests count as "unchanged", so a briefly-down site times out instead of reporting a false positive. Redirects are followed.
-- **`max-seconds` bounds when polling stops, not when the step does.** A request already in flight is allowed to finish, so a run can overrun by up to the 30-second request timeout. Leave a minute of headroom in `timeout-minutes` rather than setting it to exactly `max-seconds`.
 
 ## Development
 
