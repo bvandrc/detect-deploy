@@ -1,24 +1,16 @@
 # detect-deploy
 
-A GitHub Action that polls a URL until its content changes from the last hash it
-recorded, to detect when a new deploy has gone live.
+A GitHub Action that polls a URL until its content changes from the last hash it recorded, to detect when a new deploy has gone live.
 
-The step blocks while it polls — up to `max-attempts × interval-seconds`, 15
-minutes at the defaults — so give the job a `timeout-minutes` above that.
+The step blocks while it polls — up to `max-attempts × interval-seconds`, 15 minutes at the defaults — so give the job a `timeout-minutes` above that.
 
-This is useful when your host's deploys are decoupled from the git push that
-triggers CI, so a workflow can't assume a new build is live the moment CI
-starts. It polls instead of guessing a fixed sleep duration.
+This is useful when your host's deploys are decoupled from the git push that triggers CI, so a workflow can't assume a new build is live the moment CI starts. It polls instead of guessing a fixed sleep duration.
 
-The baseline it compares against is the hash recorded by the previous run, kept
-in the Actions cache — so a deploy that went live before the workflow even
-started is still detected, rather than timing out.
+The baseline it compares against is the hash recorded by the previous run, kept in the Actions cache — so a deploy that went live before the workflow even started is still detected, rather than timing out.
 
 ## Usage
 
-Detection goes in one job, and everything downstream keys off its result. This
-example shows both ways to use that result: a step in the same job dispatching
-an existing workflow, and a separate job gated on the output.
+Detection goes in one job, and everything downstream keys off its result. This example shows both ways to use that result: a step in the same job dispatching an existing workflow, and a separate job gated on the output.
 
 ```yaml
 name: Detect Deploy
@@ -74,28 +66,15 @@ jobs:
 
 Three things that will bite you here:
 
-- **`actions: write` is necessary but not sufficient.** Workflow dispatch is one
-  of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository
-  must also permit it: Settings → Actions → General → Workflow permissions must
-  be "Read and write". Without it the `gh workflow run` step 403s.
-- **The dispatched run starts from `--ref main`, not from the commit that was
-  deployed.** If pushes land faster than the poll finishes, the target runs
-  against whatever `main` points at then. That's usually what you want for a
-  production audit — it matches what's actually live — but it does mean the run
-  isn't pinned to the pushed commit.
-- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed`
-  is readable only inside `detect-deploy`; another job needs the `outputs:`
-  mapping above and reads it as `needs.detect-deploy.outputs.deployed`. Drop the
-  mapping and the gate silently evaluates to empty, so the job never runs.
+- **`actions: write` is necessary but not sufficient.** Workflow dispatch is one of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository must also permit it: Settings → Actions → General → Workflow permissions must be "Read and write". Without it the `gh workflow run` step 403s.
+- **The dispatched run starts from `--ref main`, not from the commit that was deployed.** If pushes land faster than the poll finishes, the target runs against whatever `main` points at then. That's usually what you want for a production audit — it matches what's actually live — but it does mean the run isn't pinned to the pushed commit.
+- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed` is readable only inside `detect-deploy`; another job needs the `outputs:` mapping above and reads it as `needs.detect-deploy.outputs.deployed`. Drop the mapping and the gate silently evaluates to empty, so the job never runs.
 
 ## Keeping the baseline warm
 
-The recorded hash lives in the Actions cache, and GitHub evicts entries that
-have gone 7 days without a read. If more than a week can pass between deploys,
-the entry is gone by the next one and that run starts over with no baseline.
+The recorded hash lives in the Actions cache, and GitHub evicts entries that have gone 7 days without a read. If more than a week can pass between deploys, the entry is gone by the next one and that run starts over with no baseline.
 
-If that's possible for you, schedule a run that does nothing but read the hash
-and record it again:
+If that's possible for you, schedule a run that does nothing but read the hash and record it again:
 
 ```yaml
 name: Keep deploy baseline warm
@@ -114,14 +93,9 @@ jobs:
           max-attempts: "1"
 ```
 
-One request, no waiting, and its `deployed` output is meant to be ignored. Run
-it on your default branch — those caches are readable from every branch, so a
-single job keeps every branch's lookups alive.
+One request, no waiting, and its `deployed` output is meant to be ignored. Run it on your default branch — those caches are readable from every branch, so a single job keeps every branch's lookups alive.
 
-Two things to know: if the page did change since the last run, this records the
-new hash, so the next real deploy compares against it rather than reporting a
-change twice. And GitHub disables scheduled workflows in a repository with no
-activity for 60 days — past that the cron stops and the entry ages out anyway.
+Two things to know: if the page did change since the last run, this records the new hash, so the next real deploy compares against it rather than reporting a change twice. And GitHub disables scheduled workflows in a repository with no activity for 60 days — past that the cron stops and the entry ages out anyway.
 
 ## Inputs
 
@@ -138,58 +112,28 @@ activity for 60 days — past that the cron stops and the entry ages out anyway.
 | ---------- | --------------------------------------------------------------------------- |
 | `deployed` | `"true"` if a new deploy was detected before `max-attempts`, else `"false"`.  |
 
-The hashes themselves are an implementation detail and aren't exposed; the run
-log prints the baseline and every observed hash if you need to debug a poll.
+The hashes themselves are an implementation detail and aren't exposed; the run log prints the baseline and every observed hash if you need to debug a poll.
 
 ## Notes
 
-- **The first run has nothing to compare against**, so the answer is genuinely
-  unknown. By default it resolves that as `true` and reports a deploy without
-  polling, so dependent steps run rather than being skipped — against a page
-  that may still be the old build. Set `assume-deployed-on-first-run: false` to
-  baseline against the page as it looks then and poll instead, which reports
-  honestly but misses a deploy that had already gone live. Either way the hash
-  is recorded, so later runs are exact.
+- **The first run has nothing to compare against**, so the answer is genuinely unknown. By default it resolves that as `true` and reports a deploy without polling, so dependent steps run rather than being skipped — against a page that may still be the old build. Set `assume-deployed-on-first-run: false` to baseline against the page as it looks then and poll instead, which reports honestly but misses a deploy that had already gone live. Either way the hash is recorded, so later runs are exact.
 
-  **This applies after every cache eviction, not just the first run ever.**
-  GitHub evicts entries unread for 7 days, so on the default a repository that
-  deploys less often than weekly reports `deployed=true` on its first run back,
-  every time, without checking anything. If your deploys can be more than a week
-  apart, either keep the entry alive (see [keeping the baseline
-  warm](#keeping-the-baseline-warm)) or set the input to `false` and accept the
-  opposite error.
-- **One baseline per URL, per branch.** Actions caches are scoped to a branch,
-  with the default branch's readable from all of them, so a pull request branch
-  reads `main`'s hash but writes its own.
-- **This detects change, not authorship.** If something else updates the page
-  between runs, the next run attributes that change to itself. For strict
-  attribution, serve a build marker (a commit SHA in the HTML) and assert on it
-  after this action reports `deployed`.
-- Failed requests count as "unchanged", so a briefly-down site times out instead
-  of reporting a false positive. Redirects are followed.
+  **This applies after every cache eviction, not just the first run ever.** GitHub evicts entries unread for 7 days, so on the default a repository that deploys less often than weekly reports `deployed=true` on its first run back, every time, without checking anything. If your deploys can be more than a week apart, either keep the entry alive (see [keeping the baseline warm](#keeping-the-baseline-warm)) or set the input to `false` and accept the opposite error.
+- **One baseline per URL, per branch.** Actions caches are scoped to a branch, with the default branch's readable from all of them, so a pull request branch reads `main`'s hash but writes its own.
+- **This detects change, not authorship.** If something else updates the page between runs, the next run attributes that change to itself. For strict attribution, serve a build marker (a commit SHA in the HTML) and assert on it after this action reports `deployed`.
+- Failed requests count as "unchanged", so a briefly-down site times out instead of reporting a false positive. Redirects are followed.
 
 ## Development
 
-The action source is `src/index.ts`. Because a JavaScript action runs the
-checked-in file rather than the source, the bundle at `dist/index.js` is
-committed and must be rebuilt whenever `src/` changes:
+The action source is `src/index.ts`. Because a JavaScript action runs the checked-in file rather than the source, the bundle at `dist/index.js` is committed and must be rebuilt whenever `src/` changes:
 
 ```sh
 npm ci
 npm run all   # type-check, bundle, test
 ```
 
-The tests run the built bundle as a subprocess against a local HTTP server,
-feeding it `INPUT_*` variables the way a runner does — so they cover the
-artifact that actually ships rather than the source it came from. The Actions
-cache isn't reachable outside a workflow, so the action skips it and reads the
-recorded hash straight off disk; seeding that file is how the tests cover the
-cache-hit paths.
+The tests run the built bundle as a subprocess against a local HTTP server, feeding it `INPUT_*` variables the way a runner does — so they cover the artifact that actually ships rather than the source it came from. The Actions cache isn't reachable outside a workflow, so the action skips it and reads the recorded hash straight off disk; seeding that file is how the tests cover the cache-hit paths.
 
-They're written in TypeScript and run through Node's own type stripping, so
-running them needs Node 22.6 or newer. There is no test framework or transpile
-step — `node --test` and `node:assert`.
+They're written in TypeScript and run through Node's own type stripping, so running them needs Node 22.6 or newer. There is no test framework or transpile step — `node --test` and `node:assert`.
 
-Pushing without rebuilding is safe on a branch — CI rebuilds and commits the
-bundle if it differs from what you pushed. On a pull request it can't commit,
-so it fails instead.
+Pushing without rebuilding is safe on a branch — CI rebuilds and commits the bundle if it differs from what you pushed. On a pull request it can't commit, so it fails instead.
