@@ -2,9 +2,9 @@
 
 A GitHub Action that polls a URL until its content changes from the last hash it recorded, to detect when a new deploy has gone live.
 
-The step blocks while it polls — `max-seconds`, 15 minutes by default — so give the job a `timeout-minutes` above that.
+Useful when your host's deploys are outside of GitHub and are triggered by way other than a git push, so a GitHub workflow can't assume a new build is live based on any other condition.
 
-This is useful when your host's deploys are decoupled from the git push that triggers CI, so a workflow can't assume a new build is live the moment CI starts. It polls instead of guessing a fixed sleep duration.
+The step blocks while it polls — `max-seconds`, 15 minutes by default — so give the job a `timeout-minutes` above that.
 
 The baseline it compares against is the hash recorded by the previous run, kept in the Actions cache — so a deploy that went live before the workflow even started is still detected, rather than timing out.
 
@@ -19,37 +19,41 @@ on:
   push:
     branches: [main]
 
-# A newer push makes an in-flight poll obsolete: it's chasing a build that has
-# been superseded. Cancel it and let the newer run detect the newer deploy.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  actions: write # required to dispatch another workflow
+  # Necessary but not sufficient: the repository must also allow it, under
+  # Settings -> Actions -> General -> Workflow permissions. Otherwise the
+  # dispatch below 403s.
+  actions: write # not required for this action, just required to dispatch another workflow per this example
 
 jobs:
   detect-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Only needed to gate another job; a step in this one reads steps.detect
-    # directly.
+    # Only needed to gate another job, since a step output isn't readable
+    # outside the job it ran in. Drop this and the gate below evaluates to
+    # empty rather than erroring, so that job just never runs.
     outputs:
-      deployed: ${{ steps.detect.outputs.deployed }}
+      deployed: ${{ steps.detect-deploy.outputs.deployed }}
 
     steps:
       - name: Detect Deploy
-        id: detect
+        id: detect-deploy
         uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
 
       # Example: useful for triggering a separate workflow, if wanting that
-      # workflow to only occur upon deployment.
+      # workflow to only occur upon deployment. --ref resolves when the
+      # dispatch happens, so the target runs against main as it is then, not
+      # the commit whose deploy was detected.
       - name: Trigger Separate Workflow
-        if: steps.detect.outputs.deployed == 'true'
+        if: steps.detect-deploy.outputs.deployed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run separate-workflow.yml --ref main --repo ${{ github.repository }}
@@ -63,8 +67,6 @@ jobs:
     steps:
       - run: echo "run your post-deploy checks here"
 ```
-
-The dispatch and the cross-job gate both have sharp edges — see [Caveats](#caveats).
 
 ## Inputs
 
@@ -93,12 +95,6 @@ The hashes themselves are an implementation detail and aren't exposed; the run l
 - **Failed requests count as "unchanged"**, so a briefly-down site times out instead of reporting a false positive. Redirects are followed.
 - **`max-seconds` bounds when polling stops, not when the step does.** A request already in flight is allowed to finish, so a run can overrun by up to the 30-second request timeout. Leave a minute of headroom in `timeout-minutes` rather than setting it to exactly `max-seconds`.
 
-These last three are about the wiring in the [usage example](#usage) rather than the action itself:
-
-- **`actions: write` is necessary but not sufficient.** Workflow dispatch is one of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository must also permit it: Settings → Actions → General → Workflow permissions must be "Read and write". Without it the `gh workflow run` step 403s.
-- **The dispatched run starts from `--ref main`, not from the commit that was deployed.** If pushes land faster than the poll finishes, the target runs against whatever `main` points at then. That's usually what you want for a production audit — it matches what's actually live — but it does mean the run isn't pinned to the pushed commit.
-- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed` is readable only inside `detect-deploy`; another job needs the `outputs:` mapping and reads it as `needs.detect-deploy.outputs.deployed`. Drop the mapping and the gate silently evaluates to empty, so the job never runs.
-
 ### Keeping the baseline warm
 
 The recorded hash lives in the Actions cache, and GitHub evicts entries that have gone 7 days without a read. If more than a week can pass between deploys, the entry is gone by the next one and that run starts over with no baseline.
@@ -125,18 +121,3 @@ jobs:
 One request, no waiting, and its `deployed` output is meant to be ignored. Run it on your default branch — those caches are readable from every branch, so a single job keeps every branch's lookups alive.
 
 Two things to know: if the page did change since the last run, this records the new hash, so the next real deploy compares against it rather than reporting a change twice. And GitHub disables scheduled workflows in a repository with no activity for 60 days — past that the cron stops and the entry ages out anyway.
-
-## Development
-
-The action source is `src/index.ts`. Because a JavaScript action runs the checked-in file rather than the source, the bundle at `dist/index.js` is committed and must be rebuilt whenever `src/` changes:
-
-```sh
-npm ci
-npm run all   # type-check, bundle, test
-```
-
-The tests run the built bundle as a subprocess against a local HTTP server, feeding it `INPUT_*` variables the way a runner does — so they cover the artifact that actually ships rather than the source it came from. The Actions cache isn't reachable outside a workflow, so the action skips it and reads the recorded hash straight off disk; seeding that file is how the tests cover the cache-hit paths.
-
-They're written in TypeScript and run through Node's own type stripping, so running them needs Node 22.6 or newer. There is no test framework or transpile step — `node --test` and `node:assert`.
-
-Pushing without rebuilding is safe on a branch — CI rebuilds and commits the bundle if it differs from what you pushed. On a pull request it can't commit, so it fails instead.
