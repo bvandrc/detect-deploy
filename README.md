@@ -1,12 +1,10 @@
 # detect-deploy
 
-A GitHub Action that polls a URL until its content changes from the last hash it recorded, to detect when a new deploy has gone live.
+A GitHub Action that polls a URL until its content changes from the hash recorded by the previous run, kept in the Actions cache — so a deploy that went live before the workflow even started is still detected, rather than timing out.
 
 Useful when your host's deploys are outside of GitHub and are triggered by way other than a git push, so a GitHub workflow can't assume a new build is live based on any other condition.
 
 The step blocks while it polls — `max-seconds`, 15 minutes by default — so give the job a `timeout-minutes` above that.
-
-The baseline it compares against is the hash recorded by the previous run, kept in the Actions cache — so a deploy that went live before the workflow even started is still detected, rather than timing out.
 
 ## Usage
 
@@ -25,19 +23,16 @@ concurrency:
 
 permissions:
   contents: read
-  # Necessary but not sufficient: the repository must also allow it, under
-  # Settings -> Actions -> General -> Workflow permissions. Otherwise the
-  # dispatch below 403s.
-  actions: write # not required for this action, just required to dispatch another workflow per this example
+  # `write` not required for the detect-deploy action, just required to dispatch another workflow per this example.
+  # The repository must also allow it, under Settings -> Actions -> General -> Workflow permissions
+  actions: write
 
 jobs:
   detect-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Only needed to gate another job, since a step output isn't readable
-    # outside the job it ran in. Drop this and the gate below evaluates to
-    # empty rather than erroring, so that job just never runs.
+    # Only needed to gate another job; a step in this one reads steps.detect-deploy directly.
     outputs:
       deployed: ${{ steps.detect-deploy.outputs.deployed }}
 
@@ -49,9 +44,10 @@ jobs:
           url: https://example.com
 
       # Example: useful for triggering a separate workflow, if wanting that
-      # workflow to only occur upon deployment. --ref resolves when the
-      # dispatch happens, so the target runs against main as it is then, not
-      # the commit whose deploy was detected.
+      # workflow to only occur upon deployment.
+
+      # NOTE: --ref resolves when the dispatch happens, so the target runs
+      # against `main` as it is then, not the commit whose deploy was detected.
       - name: Trigger Separate Workflow
         if: steps.detect-deploy.outputs.deployed == 'true'
         env:
