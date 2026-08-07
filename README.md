@@ -3,10 +3,8 @@
 A GitHub Action that polls a URL until its content changes from the last hash it
 recorded, to detect when a new deploy has gone live.
 
-It reports the answer as an output rather than failing: no deploy within the
-polling window is `deployed=false`, which dependent jobs gate on. The step does
-block while it polls — up to `max-attempts × interval-seconds`, 15 minutes at
-the defaults — so give the job a `timeout-minutes` above that.
+The step blocks while it polls — up to `max-attempts × interval-seconds`, 15
+minutes at the defaults — so give the job a `timeout-minutes` above that.
 
 This is useful when your host's deploys are decoupled from the git push that
 triggers CI, so a workflow can't assume a new build is live the moment CI
@@ -18,41 +16,9 @@ started is still detected, rather than timing out.
 
 ## Usage
 
-### Gating a later job in the same workflow
-
-```yaml
-jobs:
-  detect-deploy:
-    name: Detect deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    if: github.event_name == 'push'
-
-    outputs:
-      deployed: ${{ steps.detect.outputs.deployed }}
-
-    steps:
-      - name: Detect deploy
-        id: detect
-        uses: bvandrc/detect-deploy@v1
-        with:
-          url: https://example.com
-
-  post-deploy-checks:
-    name: Post-deploy checks
-    needs: detect-deploy
-    if: always() && (github.event_name != 'push' || needs.detect-deploy.outputs.deployed == 'true')
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "run your post-deploy checks here"
-```
-
-### Triggering a separate workflow
-
-When the work you want to run on a deploy already exists as its own workflow —
-and you'd still like to run it by hand — keep detection in a small workflow of
-its own and have it dispatch the other one. The target keeps a plain
-`workflow_dispatch` trigger, with no deploy-detection wiring in it at all:
+Detection goes in one job, and everything downstream keys off its result. This
+example shows both ways to use that result: a step in the same job dispatching
+an existing workflow, and a separate job gated on the output.
 
 ```yaml
 name: Detect Deploy
@@ -69,12 +35,17 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write # required to dispatch the target workflow
+  actions: write # required to dispatch another workflow
 
 jobs:
   detect-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Only needed to gate another job; a step in this one reads steps.detect
+    # directly.
+    outputs:
+      deployed: ${{ steps.detect.outputs.deployed }}
 
     steps:
       - name: Detect Deploy
@@ -83,14 +54,26 @@ jobs:
         with:
           url: https://example.com
 
+      # Dispatching suits work that already exists as its own workflow and
+      # should stay runnable by hand -- it keeps a plain workflow_dispatch
+      # trigger, with no deploy-detection wiring in it.
       - name: Trigger Separate Workflow
         if: steps.detect.outputs.deployed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run separate-workflow.yml --ref main --repo ${{ github.repository }}
+
+  # A separate job suits work that needs its own runner, matrix, or timeout.
+  post-deploy-checks:
+    name: Post-deploy checks
+    needs: detect-deploy
+    if: needs.detect-deploy.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "run your post-deploy checks here"
 ```
 
-Two things that will bite you here:
+Three things that will bite you here:
 
 - **`actions: write` is necessary but not sufficient.** Workflow dispatch is one
   of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository
@@ -101,6 +84,10 @@ Two things that will bite you here:
   against whatever `main` points at then. That's usually what you want for a
   production audit — it matches what's actually live — but it does mean the run
   isn't pinned to the pushed commit.
+- **A step output doesn't cross a job boundary.** `steps.detect.outputs.deployed`
+  is readable only inside `detect-deploy`; another job needs the `outputs:`
+  mapping above and reads it as `needs.detect-deploy.outputs.deployed`. Drop the
+  mapping and the gate silently evaluates to empty, so the job never runs.
 
 ## Keeping the baseline warm
 

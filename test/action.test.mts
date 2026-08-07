@@ -118,8 +118,6 @@ const runAction = async ({
   url,
   maxAttempts = 3,
   interval = 0,
-  // Mirrors action.yml's default, which the runner -- not the action -- is
-  // what applies. The test below pins the two together.
   assumeDeployed = true,
   recordedHash = null,
 }: {
