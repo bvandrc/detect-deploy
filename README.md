@@ -18,6 +18,8 @@ started is still detected, rather than timing out.
 
 ## Usage
 
+### Gating a later job in the same workflow
+
 ```yaml
 jobs:
   detect-deploy:
@@ -44,6 +46,65 @@ jobs:
     steps:
       - run: echo "run your post-deploy checks here"
 ```
+
+### Triggering a separate workflow
+
+When the work you want to run on a deploy already exists as its own workflow —
+and you'd still like to run it by hand — keep detection in a small workflow of
+its own and have it dispatch the other one. The target keeps a plain
+`workflow_dispatch` trigger, with no deploy-detection wiring in it at all:
+
+```yaml
+name: Detect Deploy
+
+on:
+  push:
+    branches: [main]
+
+# A newer push makes an in-flight poll obsolete: it's chasing a build that has
+# been superseded. Cancel it and let the newer run detect the newer deploy.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write # required to dispatch the target workflow
+
+jobs:
+  detect-deploy:
+    name: Detect deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Detect deploy
+        id: detect
+        uses: bvandrc/detect-deploy@v1
+        with:
+          url: https://example.com
+          interval-seconds: 20
+          max-attempts: 15 # 15 × 20s = 5 minutes
+          assume-deployed-on-first-run: true
+
+      - name: Trigger Lighthouse
+        if: steps.detect.outputs.deployed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run lighthouse.yml --ref main --repo ${{ github.repository }}
+```
+
+Two things that will bite you here:
+
+- **`actions: write` is necessary but not sufficient.** Workflow dispatch is one
+  of the few events `GITHUB_TOKEN` is allowed to trigger, but the repository
+  must also permit it: Settings → Actions → General → Workflow permissions must
+  be "Read and write". Without it the `gh workflow run` step 403s.
+- **The dispatched run starts from `--ref main`, not from the commit that was
+  deployed.** If pushes land faster than the poll finishes, the target runs
+  against whatever `main` points at then. That's usually what you want for a
+  production audit — it matches what's actually live — but it does mean the run
+  isn't pinned to the pushed commit.
 
 ## Keeping the baseline warm
 
