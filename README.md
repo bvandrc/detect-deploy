@@ -1,7 +1,12 @@
-# wait-for-deploy
+# detect-deploy
 
-A GitHub Action that waits on a URL, polling it until its content changes from the last hash
-it recorded, to detect when a new deploy has gone live.
+A GitHub Action that polls a URL until its content changes from the last hash it
+recorded, to detect when a new deploy has gone live.
+
+It reports the answer as an output rather than failing: no deploy within the
+polling window is `deployed=false`, which dependent jobs gate on. The step does
+block while it polls — up to `max-attempts × interval-seconds`, 15 minutes at
+the defaults — so give the job a `timeout-minutes` above that.
 
 This is useful when your host's deploys are decoupled from the git push that
 triggers CI, so a workflow can't assume a new build is live the moment CI
@@ -15,26 +20,26 @@ started is still detected, rather than timing out.
 
 ```yaml
 jobs:
-  wait-for-deploy:
-    name: Wait for deploy
+  detect-deploy:
+    name: Detect deploy
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.event_name == 'push'
 
     outputs:
-      deployed: ${{ steps.wait.outputs.deployed }}
+      deployed: ${{ steps.detect.outputs.deployed }}
 
     steps:
-      - name: Wait for deploy
-        id: wait
-        uses: bvandrc/wait-for-deploy@v1
+      - name: Detect deploy
+        id: detect
+        uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
 
   post-deploy-checks:
     name: Post-deploy checks
-    needs: wait-for-deploy
-    if: always() && (github.event_name != 'push' || needs.wait-for-deploy.outputs.deployed == 'true')
+    needs: detect-deploy
+    if: always() && (github.event_name != 'push' || needs.detect-deploy.outputs.deployed == 'true')
     runs-on: ubuntu-latest
     steps:
       - run: echo "run your post-deploy checks here"
@@ -60,7 +65,7 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: bvandrc/wait-for-deploy@v1
+      - uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
           max-attempts: "1"
