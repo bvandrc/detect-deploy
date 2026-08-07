@@ -1,6 +1,6 @@
 # detect-deploy
 
-A GitHub Action that polls a URL until its content changes from the hash recorded by the previous run, kept in the Actions cache — so a deploy that went live before the workflow even started is still detected, rather than timing out.
+A GitHub Action that polls a URL until its content changes from the hash recorded by the previous run, to detect when a new deployment has occurred and gone live.
 
 Useful when your host's deploys are outside of GitHub and are triggered by way other than a git push, so a GitHub workflow can't assume a new build is live based on any other condition.
 
@@ -45,7 +45,6 @@ jobs:
 
       # Example: useful for triggering a separate workflow, if wanting that
       # workflow to only occur upon deployment.
-
       # NOTE: --ref resolves when the dispatch happens, so the target runs
       # against `main` as it is then, not the commit whose deploy was detected.
       - name: Trigger Separate Workflow
