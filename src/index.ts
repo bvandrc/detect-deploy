@@ -43,9 +43,9 @@ const sleep = (seconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, seconds * 1000))
 
 // Everything runs inside one scope so that a bad input is thrown where the
-// handler below can turn it into an annotation. Left at module level it would
-// escape as an uncaught exception, and node would print the offending source
-// line -- which, in a minified bundle, is the entire file.
+// handler below can turn it into a single annotation. Left at module level it
+// would escape as an uncaught exception and print a stack trace through the
+// bundle, which buries a plain "max-attempts must be an integer" in noise.
 const main = async (): Promise<void> => {
   const targetUrl = getInput('url', { required: true })
   const maxAttempts = getIntegerInput('max-attempts')
