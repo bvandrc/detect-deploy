@@ -54,16 +54,15 @@ jobs:
         with:
           url: https://example.com
 
-      # Dispatching suits work that already exists as its own workflow and
-      # should stay runnable by hand -- it keeps a plain workflow_dispatch
-      # trigger, with no deploy-detection wiring in it.
+      # Example: useful for triggering a separate workflow, if wanting that
+      # workflow to only occur upon deployment.
       - name: Trigger Separate Workflow
         if: steps.detect.outputs.deployed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run separate-workflow.yml --ref main --repo ${{ github.repository }}
 
-  # A separate job suits work that needs its own runner, matrix, or timeout.
+  # Example: triggering/gating a separate job.
   post-deploy-checks:
     name: Post-deploy checks
     needs: detect-deploy

@@ -24,12 +24,12 @@ inputs:
     description: |
       How to resolve a run with no recorded hash to compare against -- the
       first run for a URL, or the first after a cache entry is evicted.
-        true (default): report deployed=true without polling, so dependent
-        steps run instead of being skipped. They may run against the old
-        build, since nothing proves the deploy has landed.
-        false: baseline against the page as it looks now and poll as usual.
-        Catches a deploy that lands during the polling window, but not one
-        that was already live; reports deployed=false if neither happens.
+        - true (default): report deployed=true without polling, so dependent
+          steps run instead of being skipped. They may run against the old
+          build, since nothing proves the deploy has landed.
+        - false: baseline against the page as it looks now and poll as usual.
+          Catches a deploy that lands during the polling window, but not one
+          that was already live; reports deployed=false if neither happens.
       Either way the hash is recorded, so later runs compare exactly.
     required: false
     default: "true"
