@@ -4,11 +4,16 @@
   "private": true,
   "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",
   "scripts": {
+    "__c0": "====================[ Build & Development ]======================",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js",
+    "__c1": "====================[ Linting & Type Checking ]==================",
+    "check": "npm run format && npm run ts:check",
+    "format": "biome check . --fix",
     "ts:check": "tsc --noEmit",
-    "all": "npm run format && npm run ts:check && npm run build && npm test",
+    "__c2": "====================[ Testing ]==================================",
     "test": "node --experimental-strip-types --test test/*.test.mts",
-    "format": "biome check . --fix"
+    "__c3": "====================[ Misc ]=====================================",
+    "all": "npm run check && npm run build && npm test"
   },
   "dependencies": {
     "@actions/cache": "^6.2.0",
