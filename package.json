@@ -7,13 +7,11 @@
     "__c0": "====================[ Build & Development ]======================",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js",
     "__c1": "====================[ Linting & Type Checking ]==================",
-    "check": "npm run format && npm run ts:check",
+    "check": "biome check . && npm run ts:check",
     "format": "biome check . --fix",
     "ts:check": "tsc --noEmit",
     "__c2": "====================[ Testing ]==================================",
-    "test": "node --experimental-strip-types --test test/*.test.mts",
-    "__c3": "====================[ Misc ]=====================================",
-    "all": "npm run check && npm run build && npm test"
+    "test": "node --experimental-strip-types --test test/*.test.mts"
   },
   "dependencies": {
     "@actions/cache": "^6.2.0",
