@@ -34,11 +34,8 @@ jobs:
       - name: Lint package.json
         uses: bvandrc/lint-package-json@v2
 
-      - name: Format & Lint
-        run: npx biome ci .
-
-      - name: Type Check
-        run: npm run ts:check
+      - name: Lint & Type Check
+        run: npm run check
 
       - name: Build
         run: npm run build
