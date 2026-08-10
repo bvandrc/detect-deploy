@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Polls a URL until its content changes, to detect when a deploy has gone live.",
+  "license": "ISC",
   "scripts": {
     "__c0": "====================[ Build & Development ]======================",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js",
