@@ -26,7 +26,7 @@ const ACTION = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
   'dist',
-  'index.js',
+  'index.js'
 )
 
 // Loopback rather than localhost: it can't resolve to IPv6 on some machines
@@ -171,7 +171,7 @@ const runAction = async ({
       { env },
       (error: ExecFileException | null, stdout: string, stderr: string) => {
         resolve({ code: error ? Number(error.code ?? 1) : 0, stdout, stderr })
-      },
+      }
     )
   })
 
@@ -194,7 +194,7 @@ const runAction = async ({
 test('the harness default matches the one declared in action.yml', () => {
   const actionYml = fs.readFileSync(
     path.join(import.meta.dirname, '..', 'action.yml'),
-    'utf8',
+    'utf8'
   )
   const declared = actionYml
     .split('assume-deployed-on-first-run:')[1]
@@ -202,7 +202,7 @@ test('the harness default matches the one declared in action.yml', () => {
   assert.equal(
     declared,
     'true',
-    'action.yml default changed; update runAction and the tests that rely on it',
+    'action.yml default changed; update runAction and the tests that rely on it'
   )
 })
 
@@ -294,9 +294,7 @@ test('a malformed recorded hash is discarded rather than used as a baseline', as
     assumeDeployed: false,
   })
   assert.ok(
-    run.annotations.some((a) =>
-      a.startsWith('::warning::Discarding malformed'),
-    ),
+    run.annotations.some((a) => a.startsWith('::warning::Discarding malformed'))
   )
   assert.match(run.stdout, /Baseline \(live\)/)
   assert.equal(run.outputs.deployed, 'false')
@@ -309,7 +307,7 @@ test('assume-deployed-on-first-run reports true without polling, but still recor
   assert.equal(
     server.requests,
     1,
-    'should fetch once to seed the baseline, then stop',
+    'should fetch once to seed the baseline, then stop'
   )
   assert.equal(run.recorded, sha256('<html>a</html>'))
   assert.doesNotMatch(run.stdout, /Attempt/)
@@ -335,7 +333,7 @@ test('failed requests count as unchanged rather than as a deploy', async () => {
   assert.equal(
     run.outputs.deployed,
     'false',
-    'a broken site must not look like a deploy',
+    'a broken site must not look like a deploy'
   )
   assert.match(run.stdout, /request failed \(HTTP 404\)/)
 })
@@ -352,8 +350,8 @@ test('an unreachable url with no recorded hash fails the step', async () => {
   assert.equal(run.code, 1)
   assert.ok(
     run.annotations.some((a) =>
-      a.startsWith('::error::Failed to compute a checksum'),
-    ),
+      a.startsWith('::error::Failed to compute a checksum')
+    )
   )
 })
 
@@ -378,7 +376,7 @@ test('a missing url fails the step', async () => {
   assert.equal(run.code, 1)
   assert.ok(
     run.annotations.some((a) =>
-      a.includes('Input required and not supplied: url'),
-    ),
+      a.includes('Input required and not supplied: url')
+    )
   )
 })
