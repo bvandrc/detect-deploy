@@ -51,7 +51,7 @@ const main = async (): Promise<void> => {
   const maxSeconds = getIntegerInput('max-seconds')
   const interval = getIntegerInput('interval-seconds')
   const assumeDeployedOnFirstRun = getBooleanInput(
-    'assume-deployed-on-first-run',
+    'assume-deployed-on-first-run'
   )
 
   // A directory, because the cache API caches paths rather than values.
@@ -103,7 +103,7 @@ const main = async (): Promise<void> => {
       }
     } else {
       debug(
-        'Actions cache is unavailable; the baseline cannot carry across runs.',
+        'Actions cache is unavailable; the baseline cannot carry across runs.'
       )
     }
 
@@ -143,13 +143,13 @@ const main = async (): Promise<void> => {
       notice(
         assumeDeployedOnFirstRun
           ? `${noHashYet} Recording what it serves now and reporting deployed=true without polling.`
-          : `${noHashYet} This run is baselining against the page as it looks now, so a deploy that already went live may not be detected.`,
+          : `${noHashYet} This run is baselining against the page as it looks now, so a deploy that already went live may not be detected.`
       )
       try {
         baseline = await fetchHash()
       } catch (err) {
         throw new Error(
-          `Failed to compute a checksum for ${targetUrl}; cannot establish a baseline. (${message(err)})`,
+          `Failed to compute a checksum for ${targetUrl}; cannot establish a baseline. (${message(err)})`
         )
       }
 
