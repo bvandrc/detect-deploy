@@ -380,3 +380,123 @@ test('a missing url fails the step', async () => {
     )
   )
 })
+
+test('a bad interval-seconds is named in its own annotation', async () => {
+  const server = await startTestServer({ body: 'x' })
+  const run = await runAction({ url: server.url, interval: 'soon' })
+  assert.equal(run.code, 1)
+  assert.deepEqual(run.annotations, [
+    "::error::interval-seconds must be a non-negative integer, got 'soon'.",
+  ])
+})
+
+test('only whole non-negative numbers are accepted as a budget', async () => {
+  const server = await startTestServer({ body: 'x' })
+  for (const maxSeconds of [
+    '-1', // a negative budget would poll forever or not at all
+    '1.5', // Number() would round it away silently
+    '1e3', // as would exponent notation
+    '', // an input the workflow left blank
+  ]) {
+    const run = await runAction({ url: server.url, maxSeconds })
+    assert.equal(run.code, 1, `max-seconds=${JSON.stringify(maxSeconds)}`)
+    assert.deepEqual(run.annotations, [
+      `::error::max-seconds must be a non-negative integer, got '${maxSeconds}'.`,
+    ])
+  }
+})
+
+test('a padded number is still a number, since the runner trims inputs', async () => {
+  const server = await startTestServer({ body: '<html>same</html>' })
+  const run = await runAction({
+    url: server.url,
+    maxSeconds: ' 0 ',
+    recordedHash: sha256('<html>same</html>'),
+  })
+  assert.equal(run.code, 0)
+  assert.match(run.stdout, /Polling for up to 0s/)
+})
+
+test('a site that is down for the whole poll reports false rather than failing', async () => {
+  // Port 1 is reserved and never listening, so every attempt fails outright.
+  const run = await runAction({
+    url: `http://${HOST}:1/nothing`,
+    maxSeconds: 0,
+    recordedHash: sha256('<html>old</html>'),
+  })
+  assert.equal(run.code, 0, 'an unreachable site is not the action’s failure')
+  assert.equal(run.outputs.deployed, 'false')
+  assert.match(run.stdout, /Attempt 1: request failed/)
+})
+
+test('an http error while baselining fails the step, with the status', async () => {
+  const server = await startTestServer({ body: 'boom', status: 500 })
+  const run = await runAction({ url: server.url, assumeDeployed: false })
+  assert.equal(run.code, 1)
+  assert.ok(
+    run.annotations.some(
+      (a) =>
+        a.startsWith('::error::Failed to compute a checksum') &&
+        a.includes('HTTP 500')
+    )
+  )
+})
+
+test('a timed-out run re-records the baseline, keeping the entry fresh', async () => {
+  // Nothing changed, so the hash is the same one -- but it has to be written
+  // again, or the cache entry ages out and the next run baselines live.
+  const recordedHash = sha256('<html>same</html>')
+  const server = await startTestServer({ body: '<html>same</html>' })
+  const run = await runAction({ url: server.url, recordedHash })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.equal(run.recorded, recordedHash)
+})
+
+test('a recorded hash is read despite the whitespace around it', async () => {
+  const server = await startTestServer({ body: '<html>same</html>' })
+  const run = await runAction({
+    url: server.url,
+    // `record()` writes a trailing newline, so a reader that did not trim
+    // would discard every hash it ever wrote.
+    recordedHash: `  ${sha256('<html>same</html>')}  `,
+  })
+  assert.equal(run.outputs.deployed, 'false')
+  assert.match(run.stdout, /Baseline \(cache\)/)
+})
+
+test('anything that is not a sha256 digest is discarded', async () => {
+  const digest = sha256('<html>a</html>')
+  for (const [label, recordedHash] of [
+    ['truncated', digest.slice(0, 63)],
+    ['overlong', `${digest}0`],
+    // `record()` only ever writes lowercase, so uppercase means something else
+    // wrote the file.
+    ['uppercase', digest.toUpperCase()],
+    ['empty', ''],
+  ] as const) {
+    const server = await startTestServer({ body: '<html>a</html>' })
+    const run = await runAction({
+      url: server.url,
+      recordedHash,
+      assumeDeployed: false,
+    })
+    assert.match(run.stdout, /Baseline \(live\)/, label)
+    assert.equal(run.outputs.deployed, 'false', label)
+  }
+})
+
+test('an empty page is a hash like any other, not a missing baseline', async () => {
+  const server = await startTestServer({
+    body: '',
+    changeAfter: 1,
+    nextBody: '<html>new</html>',
+  })
+  const run = await runAction({
+    url: server.url,
+    maxSeconds: 2,
+    interval: 1,
+    assumeDeployed: false,
+  })
+  assert.equal(run.outputs.deployed, 'true')
+  assert.equal(run.recorded, sha256('<html>new</html>'))
+})
