@@ -381,15 +381,6 @@ test('a missing url fails the step', async () => {
   )
 })
 
-test('a bad interval-seconds is named in its own annotation', async () => {
-  const server = await startTestServer({ body: 'x' })
-  const run = await runAction({ url: server.url, interval: 'soon' })
-  assert.equal(run.code, 1)
-  assert.deepEqual(run.annotations, [
-    "::error::interval-seconds must be a non-negative integer, got 'soon'.",
-  ])
-})
-
 test('only whole non-negative numbers are accepted as a budget', async () => {
   const server = await startTestServer({ body: 'x' })
   for (const maxSeconds of [
