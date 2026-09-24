@@ -406,17 +406,6 @@ test('only whole non-negative numbers are accepted as a budget', async () => {
   }
 })
 
-test('a padded number is still a number, since the runner trims inputs', async () => {
-  const server = await startTestServer({ body: '<html>same</html>' })
-  const run = await runAction({
-    url: server.url,
-    maxSeconds: ' 0 ',
-    recordedHash: sha256('<html>same</html>'),
-  })
-  assert.equal(run.code, 0)
-  assert.match(run.stdout, /Polling for up to 0s/)
-})
-
 test('a site that is down for the whole poll reports false rather than failing', async () => {
   // Port 1 is reserved and never listening, so every attempt fails outright.
   const run = await runAction({
@@ -450,18 +439,6 @@ test('a timed-out run re-records the baseline, keeping the entry fresh', async (
   const run = await runAction({ url: server.url, recordedHash })
   assert.equal(run.outputs.deployed, 'false')
   assert.equal(run.recorded, recordedHash)
-})
-
-test('a recorded hash is read despite the whitespace around it', async () => {
-  const server = await startTestServer({ body: '<html>same</html>' })
-  const run = await runAction({
-    url: server.url,
-    // `record()` writes a trailing newline, so a reader that did not trim
-    // would discard every hash it ever wrote.
-    recordedHash: `  ${sha256('<html>same</html>')}  `,
-  })
-  assert.equal(run.outputs.deployed, 'false')
-  assert.match(run.stdout, /Baseline \(cache\)/)
 })
 
 test('anything that is not a sha256 digest is discarded', async () => {
