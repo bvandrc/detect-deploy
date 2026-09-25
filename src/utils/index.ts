@@ -1,6 +1,5 @@
 /**
- * @fileoverview `typedKeys`, `typedEntries`, and `typedFromEntries`: the
- * `Object` builtins with the cast a call site would otherwise write by hand.
+ * @fileoverview Small shared helpers.
  */
 
 import type { Entries } from 'type-fest'
