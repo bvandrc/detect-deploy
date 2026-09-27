@@ -79,10 +79,11 @@ const main = async (): Promise<void> => {
 
   // Used for both the baseline and every poll, so the two can never be hashed
   // differently -- which would report a change on the first attempt of every
-  // run. Redirects are followed: the curl this replaced did not, so a url that
-  // 301s hashed an empty body that never changed.
+  // run.
   const fetchHash = async (): Promise<string> => {
     const res = await fetch(targetUrl, {
+      // The curl this replaced did not follow redirects, so a url that 301s
+      // hashed an empty body that never changed.
       redirect: 'follow',
       signal: AbortSignal.timeout(30_000),
     })
