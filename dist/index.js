@@ -87801,6 +87801,8 @@ var main = async () => {
   ].join("-");
   const fetchHash = async () => {
     const res = await fetch(targetUrl, {
+      // The curl this replaced did not follow redirects, so a url that 301s
+      // hashed an empty body that never changed.
       redirect: "follow",
       signal: AbortSignal.timeout(3e4)
     });
