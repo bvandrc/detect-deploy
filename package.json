@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@actions/cache": "^6",
-    "@actions/core": "^1"
+    "@actions/core": "^3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6",
