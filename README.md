@@ -65,17 +65,17 @@ jobs:
 
 ## Inputs
 
-| Name                           | Description                                                                                                                           | Required | Default |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- |
-| `url`                          | The URL to poll.                                                                                                                      | Yes      |         |
-| `max-seconds`                  | How long to keep polling before giving up. `0` makes one request and returns.                                                         | No       | `900`   |
-| `interval-seconds`             | Seconds to wait between polling attempts.                                                                                             | No       | `20`    |
-| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped. See [Caveats](#caveats). | No       | `true`  |
+| Name | Description | Required | Default |
+| --- | --- | --- | --- |
+| `url` | The URL to poll. | Yes |  |
+| `max-seconds` | How long to keep polling before giving up. `0` makes one request and returns. | No | `900` |
+| `interval-seconds` | Seconds to wait between polling attempts. | No | `20` |
+| `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped. See [Caveats](#caveats). | No | `true` |
 
 ## Outputs
 
-| Name       | Description                                                                 |
-| ---------- | --------------------------------------------------------------------------- |
+| Name | Description |
+| --- | --- |
 | `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`. |
 
 ## Caveats
