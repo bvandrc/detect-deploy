@@ -12,6 +12,7 @@
     "includes": [
       "**",
       "!!conventions",
+      "!!**/coverage",
       // dist/ is a generated, minified bundle -- never ours to format or lint.
       "!**/dist",
       "!**/node_modules"
