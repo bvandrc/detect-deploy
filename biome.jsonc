@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "extends": ["./conventions/biome.base.json"],
+  "extends": ["./conventions/biome.base.jsonc"],
   "linter": {
     "rules": {
       "suspicious": {
@@ -11,6 +11,8 @@
   "files": {
     "includes": [
       "**",
+      "!!conventions",
+      "!!**/coverage",
       // dist/ is a generated, minified bundle -- never ours to format or lint.
       "!**/dist",
       "!**/node_modules"

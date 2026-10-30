@@ -18,11 +18,11 @@ inputs:
         - NOTE: Set the job's timeout-minutes above this!
         - 0 makes one request and returns without waiting.
     required: false
-    default: "900" # 15 minutes
+    default: '900' # 15 minutes
   interval-seconds:
     description: Seconds to wait between polling attempts.
     required: false
-    default: "20"
+    default: '20'
   assume-deployed-on-first-run:
     description: |
       How to resolve a run with no recorded hash to compare against -- the
@@ -35,7 +35,7 @@ inputs:
           that was already live; reports deployed=false if neither happens.
       Either way the hash is recorded, so later runs compare exactly.
     required: false
-    default: "true"
+    default: 'true'
 
 outputs:
   deployed:
