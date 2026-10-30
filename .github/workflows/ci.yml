@@ -19,11 +19,11 @@ jobs:
     steps:
       # Check out the branch itself rather than the detached commit, so a
       # rebuilt bundle has somewhere to land.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref || github.ref_name }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
