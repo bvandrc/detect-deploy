@@ -65,18 +65,18 @@ jobs:
 
 ## Inputs
 
-| Name               | Description                                                                                                                                            | Required | Default |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- |
-| `url`              | The URL to poll.                                                                                                                                        | Yes      |         |
-| `max-seconds`      | How long to keep polling before giving up. `0` makes one request and returns.                                                                           | No       | `900`   |
-| `interval-seconds` | Seconds to wait between polling attempts.                                                                                                               | No       | `20`    |
+| Name                           | Description                                                                                                                           | Required | Default |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- |
+| `url`                          | The URL to poll.                                                                                                                      | Yes      |         |
+| `max-seconds`                  | How long to keep polling before giving up. `0` makes one request and returns.                                                         | No       | `900`   |
+| `interval-seconds`             | Seconds to wait between polling attempts.                                                                                             | No       | `20`    |
 | `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped. See [Caveats](#caveats). | No       | `true`  |
 
 ## Outputs
 
 | Name       | Description                                                                 |
 | ---------- | --------------------------------------------------------------------------- |
-| `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`.   |
+| `deployed` | `"true"` if a new deploy was detected within `max-seconds`, else `"false"`. |
 
 ## Caveats
 
@@ -98,7 +98,7 @@ If that's possible for you, schedule a run that does nothing but read the hash a
 name: Keep deploy baseline warm
 on:
   schedule:
-    - cron: "0 4 * * 1,4" # twice weekly: a 7-day cron races the 7-day eviction
+    - cron: '0 4 * * 1,4' # twice weekly: a 7-day cron races the 7-day eviction
   workflow_dispatch:
 
 jobs:
@@ -108,7 +108,7 @@ jobs:
       - uses: bvandrc/detect-deploy@v1
         with:
           url: https://example.com
-          max-seconds: "0" # one request, no polling
+          max-seconds: '0' # one request, no polling
 ```
 
 One request, no waiting, and its `deployed` output is meant to be ignored. Run it on your default branch — those caches are readable from every branch, so a single job keeps every branch's lookups alive.

@@ -199,7 +199,7 @@ test('the harness default matches the one declared in action.yml', () => {
   )
   const declared = actionYml
     .split('assume-deployed-on-first-run:')[1]
-    ?.match(/^\s+default: "(true|false)"$/m)?.[1]
+    ?.match(/^\s+default: '(true|false)'$/m)?.[1]
   assert.equal(
     declared,
     'true',
