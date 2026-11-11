@@ -36,6 +36,14 @@ inputs:
       Either way the hash is recorded, so later runs compare exactly.
     required: false
     default: 'true'
+  telemetry:
+    description: |
+      Send one anonymous ping per run to usage.bvandercar.dev, counting the
+      action's runs. A private repo is sent only as a hash of its name. It
+      never slows or fails the step. "false" turns it off, as does setting
+      DO_NOT_TRACK.
+    required: false
+    default: 'true'
 
 outputs:
   deployed:

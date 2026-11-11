@@ -71,6 +71,7 @@ jobs:
 | `max-seconds` | How long to keep polling before giving up. `0` makes one request and returns. | No | `900` |
 | `interval-seconds` | Seconds to wait between polling attempts. | No | `20` |
 | `assume-deployed-on-first-run` | Report `true` without polling when no hash is recorded yet, so dependent steps run instead of being skipped. See [Caveats](#caveats). | No | `true` |
+| `telemetry` | Send one anonymous ping per run, counting the action's runs. See [Telemetry](#telemetry). | No | `true` |
 
 ## Outputs
 
@@ -117,3 +118,9 @@ Two things to know:
 
 - If the page did change since the last run, this records the new hash, so the next real deploy compares against it rather than reporting a change twice.
 - GitHub disables scheduled workflows in a repository with no activity for 60 days — past that the cron stops and the entry ages out anyway.
+
+## Telemetry
+
+Each run sends one ping to `usage.bvandercar.dev`, so the action's use can be counted. It holds the action's ref, the event, the runner's OS and whether it's GitHub-hosted, and the repo: by name if it's public, or, for any other, only as a SHA-256 of its name, so a private repo's name never leaves the runner. The ping runs alongside the polling and gives up after two seconds, so it never slows or fails the step.
+
+Set `telemetry: false`, or the `DO_NOT_TRACK` environment variable, to turn it off. [bvandrc/action-usage](https://github.com/bvandrc/action-usage) documents exactly what's sent and kept.

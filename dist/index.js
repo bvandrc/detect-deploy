@@ -26722,8 +26722,8 @@ var require_commonjs2 = __commonJS({
 });
 
 // src/index.ts
-var import_node_crypto4 = require("node:crypto");
-var import_node_fs2 = require("node:fs");
+var import_node_crypto5 = require("node:crypto");
+var import_node_fs3 = require("node:fs");
 var import_node_os3 = require("node:os");
 var import_node_path = require("node:path");
 
@@ -68242,6 +68242,77 @@ function saveCacheV2(paths_1, key_1, options_1) {
   });
 }
 
+// src/usage-ping.ts
+var import_node_crypto4 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var ENDPOINT = "https://usage.bvandercar.dev/v1/runs";
+var TIMEOUT_MS = 2e3;
+var VISIBILITIES = ["public", "private", "internal"];
+var readVisibility = (eventPath) => {
+  if (!eventPath) return "unknown";
+  try {
+    const { repository } = JSON.parse((0, import_node_fs2.readFileSync)(eventPath, "utf8"));
+    const visibility = VISIBILITIES.find((v) => v === repository?.visibility);
+    if (visibility) return visibility;
+    if (typeof repository?.private === "boolean") {
+      return repository.private ? "private" : "public";
+    }
+  } catch {
+  }
+  return "unknown";
+};
+var readRef = (env, actionDir) => env.GITHUB_ACTION_REF || // The runner checks a used action out to _actions/<owner>/<name>/<ref>/.
+/[\\/]_actions[\\/][^\\/]+[\\/][^\\/]+[\\/]([^\\/]+)/.exec(actionDir)?.[1] || // Anywhere else is a checkout of the action's own repo (`uses: ./`).
+"local";
+var buildRunPing = ({
+  action: action5,
+  actionDir,
+  env
+}) => {
+  const repo = env.GITHUB_REPOSITORY ?? "";
+  const fields = {
+    action: action5,
+    ref: readRef(env, actionDir),
+    ownRepo: (env.GITHUB_REPOSITORY_OWNER ?? "").toLowerCase() === action5.split("/")[0]?.toLowerCase(),
+    event: env.GITHUB_EVENT_NAME || null,
+    runnerOs: env.RUNNER_OS || null,
+    runnerEnvironment: env.RUNNER_ENVIRONMENT || null,
+    ghes: (env.GITHUB_SERVER_URL ?? "https://github.com") !== "https://github.com"
+  };
+  const visibility = readVisibility(env.GITHUB_EVENT_PATH);
+  if (visibility === "public") {
+    return {
+      ...fields,
+      visibility,
+      repo,
+      runId: Number(env.GITHUB_RUN_ID),
+      runAttempt: Number(env.GITHUB_RUN_ATTEMPT)
+    };
+  }
+  return {
+    ...fields,
+    visibility,
+    repoHash: (0, import_node_crypto4.createHash)("sha256").update(`action-usage:${repo.toLowerCase()}`).digest("hex")
+  };
+};
+var sendUsagePing = async ({
+  enabled: enabled2,
+  ...options
+}) => {
+  const { env } = options;
+  const doNotTrack = env.DO_NOT_TRACK && !["0", "false"].includes(env.DO_NOT_TRACK);
+  if (!enabled2 || doNotTrack || env.GITHUB_ACTIONS !== "true") return;
+  try {
+    await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRunPing(options)),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
+  } catch {
+  }
+};
+
 // src/index.ts
 var message = (err) => err instanceof Error ? err.message : String(err);
 var getIntegerInput = (name) => {
@@ -68261,7 +68332,7 @@ var main = async () => {
   );
   const stateDir = (0, import_node_path.join)(process.env.RUNNER_TEMP ?? (0, import_node_os3.tmpdir)(), "detect-deploy");
   const stateFile = (0, import_node_path.join)(stateDir, "hash");
-  const urlId = (0, import_node_crypto4.createHash)("sha256").update(targetUrl).digest("hex").slice(0, 32);
+  const urlId = (0, import_node_crypto5.createHash)("sha256").update(targetUrl).digest("hex").slice(0, 32);
   const cachePrefix = `detect-deploy-v1-${urlId}-`;
   const cacheKey = cachePrefix + [
     process.env.GITHUB_RUN_ID,
@@ -68277,7 +68348,7 @@ var main = async () => {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body2 = Buffer.from(await res.arrayBuffer());
-    return (0, import_node_crypto4.createHash)("sha256").update(body2).digest("hex");
+    return (0, import_node_crypto5.createHash)("sha256").update(body2).digest("hex");
   };
   const restoreBaseline = async () => {
     if (isFeatureAvailable()) {
@@ -68292,8 +68363,8 @@ var main = async () => {
         "Actions cache is unavailable; the baseline cannot carry across runs."
       );
     }
-    if (!(0, import_node_fs2.existsSync)(stateFile)) return null;
-    const cached = (0, import_node_fs2.readFileSync)(stateFile, "utf8").trim();
+    if (!(0, import_node_fs3.existsSync)(stateFile)) return null;
+    const cached = (0, import_node_fs3.readFileSync)(stateFile, "utf8").trim();
     if (!/^[0-9a-f]{64}$/.test(cached)) {
       warning(`Discarding malformed cached hash for ${targetUrl}.`);
       return null;
@@ -68302,12 +68373,12 @@ var main = async () => {
   };
   let hashToRecord = null;
   const record = (hash) => {
-    (0, import_node_fs2.writeFileSync)(stateFile, `${hash}
+    (0, import_node_fs3.writeFileSync)(stateFile, `${hash}
 `);
     hashToRecord = hash;
   };
   try {
-    (0, import_node_fs2.mkdirSync)(stateDir, { recursive: true });
+    (0, import_node_fs3.mkdirSync)(stateDir, { recursive: true });
     let baseline = await restoreBaseline();
     const source = baseline ? "cache" : "live";
     if (!baseline) {
@@ -68362,7 +68433,13 @@ var main = async () => {
     }
   }
 };
-main().catch((err) => setFailed(message(err)));
+var usagePing = sendUsagePing({
+  action: "bvandrc/detect-deploy",
+  actionDir: __dirname,
+  env: process.env,
+  enabled: getInput("telemetry") !== "false"
+});
+main().catch((err) => setFailed(message(err))).finally(() => usagePing);
 /*! Bundled license information:
 
 undici/lib/web/fetch/body.js:

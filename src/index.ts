@@ -28,6 +28,8 @@ import {
   warning,
 } from '@actions/core'
 
+import { sendUsagePing } from './usage-ping.ts'
+
 const message = (err: unknown): string =>
   err instanceof Error ? err.message : String(err)
 
@@ -205,5 +207,15 @@ const main = async (): Promise<void> => {
   }
 }
 
+// Runs alongside the polling, so it adds no time to the step.
+const usagePing = sendUsagePing({
+  action: 'bvandrc/detect-deploy',
+  actionDir: __dirname,
+  env: process.env,
+  enabled: getInput('telemetry') !== 'false',
+})
+
 // Not top-level await: the bundle is CommonJS, which has no such thing.
-main().catch((err: unknown) => setFailed(message(err)))
+main()
+  .catch((err: unknown) => setFailed(message(err)))
+  .finally(() => usagePing)
