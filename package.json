@@ -23,7 +23,7 @@
     "@types/node": "^24",
     "es-toolkit": "^1",
     "esbuild": "^0.28",
-    "ts-extras": "^1",
+    "ts-extras": "^2",
     "type-fest": "^5",
     "typescript": "^7"
   }
